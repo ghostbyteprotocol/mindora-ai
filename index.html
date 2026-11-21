@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | Google & Phone OTP</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #0f172a; color: #f8fafc; padding: 16px;
+    }
+    .card {
+      background: #1e293b; padding: 28px 24px; border-radius: 16px; width: 100%; max-width: 380px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid #334155;
+    }
+    h2 { margin: 0 0 20px; text-align: center; font-size: 22px; }
+    .btn {
+      width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 15px;
+      font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: 0.2s;
+    }
+    .btn-google { background: #ffffff; color: #0f172a; }
+    .btn-google:hover { background: #e2e8f0; }
+    .btn-primary { background: #3b82f6; color: #ffffff; margin-top: 10px; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-logout { background: #ef4444; color: #ffffff; margin-top: 16px; }
+    .divider {
+      text-align: center; margin: 18px 0; color: #94a3b8; font-size: 13px; position: relative;
+    }
+    .divider::before, .divider::after {
+      content: ""; position: absolute; top: 50%; width: 40%; height: 1px; background: #334155;
+    }
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+    .phone-group { display: flex; gap: 8px; }
+    input {
+      width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #475569;
+      background: #0f172a; color: #fff; font-size: 15px; outline: none;
+    }
+    input:focus { border-color: #3b82f6; }
+    .prefix { width: 70px; text-align: center; font-weight: bold; color: #cbd5e1; }
+    #otp-section, #user-section { display: none; }
+    #msg { margin-top: 14px; font-size: 13px; text-align: center; color: #f87171; word-break: break-word; }
+    .profile-box { text-align: center; }
+    .profile-box img { width: 70px; height: 70px; border-radius: 50%; margin-bottom: 10px; border: 2px solid #3b82f6; }
+    .info { background: #0f172a; padding: 12px; border-radius: 10px; font-size: 14px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <!-- লগইন সেকশন -->
+    <div id="login-section">
+      <h2>Welcome Back</h2>
+
+      <!-- Google Login Button -->
+      <button id="google-btn" class="btn btn-google">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="G">
+        Continue with Google
+      </button>
+
+      <div class="divider">OR</div>
+
+      <!-- Phone Number Input -->
+      <div id="phone-input-box">
+        <div class="phone-group">
+          <input type="text" class="prefix" value="+91" readonly />
+          <input type="tel" id="phone-number" placeholder="10 digit mobile number" maxlength="10" />
+        </div>
+        <button id="send-otp-btn" class="btn btn-primary">Send OTP</button>
+      </div>
+
+      <!-- OTP Input -->
+      <div id="otp-section">
+        <input type="number" id="otp-code" placeholder="Enter 6-digit OTP" />
+        <button id="verify-otp-btn" class="btn btn-primary">Verify & Login</button>
+      </div>
+
+      <div id="recaptcha-container"></div>
+      <div id="msg"></div>
+    </div>
+
+    <!-- লগইন হওয়ার পর প্রোফাইল সেকশন -->
+    <div id="user-section" class="profile-box">
+      <h2>Login Successful!</h2>
+      <img id="user-pic" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="User">
+      <div class="info">
+        <p id="user-name" style="margin: 4px 0; font-weight: bold;"></p>
+        <p id="user-detail" style="margin: 4px 0; color: #94a3b8;"></p>
+      </div>
+      <button id="logout-btn" class="btn btn-logout">Logout</button>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (Modular Web v11) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      RecaptchaVerifier,
+      signInWithPhoneNumber,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQSNDMA1JLHll5mMjSwXDSa0cAmjw8Bo4",
+      authDomain: "my-website-login-10b06.firebaseapp.com",
+      projectId: "my-website-login-10b06",
+      storageBucket: "my-website-login-10b06.firebasestorage.app",
+      messagingSenderId: "1058420080529",
+      appId: "1:1058420080529:web:1440b3f78f8853268b2430",
+      measurementId: "G-WCV8VCP27D"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    const msg = document.getElementById("msg");
+    const loginSection = document.getElementById("login-section");
+    const userSection = document.getElementById("user-section");
+
+    // ১. Google Login
+    document.getElementById("google-btn").addEventListener("click", async () => {
+      msg.innerText = "";
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (error) {
+        msg.innerText = error.message;
+      }
+    });
+
+    // ২. Invisible reCAPTCHA Setup
+    window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+      size: "invisible"
+    });
+
+    let confirmationResult;
+
+    // ৩. Send OTP
+    document.getElementById("send-otp-btn").addEventListener("click", async () => {
+      msg.innerText = "";
+      const phone = document.getElementById("phone-number").value.trim();
+      if (phone.length !== 10) {
+        msg.innerText = "সঠিক ১০ সংখ্যার মোবাইল নাম্বার দে!";
+        return;
+      }
+      const fullPhone = "+91" + phone;
+      const btn = document.getElementById("send-otp-btn");
+      btn.disabled = true;
+      btn.innerText = "Sending...";
+
+      try {
+        confirmationResult = await signInWithPhoneNumber(auth, fullPhone, window.recaptchaVerifier);
+        document.getElementById("phone-input-box").style.display = "none";
+        document.getElementById("otp-section").style.display = "block";
+        msg.style.color = "#4ade80";
+        msg.innerText = "OTP পাঠানো হয়েছে!";
+      } catch (error) {
+        msg.style.color = "#f87171";
+        msg.innerText = error.message;
+        btn.disabled = false;
+        btn.innerText = "Send OTP";
+      }
+    });
+
+    // ৪. Verify OTP
+    document.getElementById("verify-otp-btn").addEventListener("click", async () => {
+      const code = document.getElementById("otp-code").value.trim();
+      if (code.length !== 6) {
+        msg.style.color = "#f87171";
+        msg.innerText = "৬ সংখ্যার OTP দে!";
+        return;
+      }
+      try {
+        await confirmationResult.confirm(code);
+      } catch (error) {
+        msg.style.color = "#f87171";
+        msg.innerText = "ভুল OTP দিয়েছিস! আবার চেক কর।";
+      }
+    });
+
+    // ৫. ইউজার লগইন স্ট্যাটাস চেক
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        loginSection.style.display = "none";
+        userSection.style.display = "block";
+        document.getElementById("user-name").innerText = user.displayName || "Mobile User";
+        document.getElementById("user-detail").innerText = user.email || user.phoneNumber;
+        if (user.photoURL) {
+          document.getElementById("user-pic").src = user.photoURL;
+        }
+      } else {
+        loginSection.style.display = "block";
+        userSection.style.display = "none";
+        document.getElementById("phone-input-box").style.display = "block";
+        document.getElementById("otp-section").style.display = "none";
+        document.getElementById("send-otp-btn").disabled = false;
+        document.getElementById("send-otp-btn").innerText = "Send OTP";
+        msg.innerText = "";
+      }
+    });
+
+    // ৬. Logout
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      signOut(auth);
+    });
+  </script>
+</body>
+</html>
