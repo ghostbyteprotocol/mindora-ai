@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Complete Clean Build)
+// app.js — MinDora AI Core Engine (Native Neural Voice, Bengali Speech & Complete Build)
 import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -810,7 +810,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. NEURAL STUDIO VOICE ENGINE ====================
+// ==================== 6. NEURAL STUDIO VOICE ENGINE (GEMINI NATIVE AUDIO) ====================
 function stopCurrentSpeech() {
   if (activeAudioPlayer) {
     activeAudioPlayer.pause();
@@ -861,11 +861,11 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 1500);
+    .slice(0, 1200);
 
   if (!cleanSpeechText) return null;
 
-  const ttsModels = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
+  const ttsModels = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-2.5-flash-preview-tts"];
   for (const model of ttsModels) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -875,7 +875,15 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
           "X-goog-api-key": getApiKey()
         },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: cleanSpeechText }] }],
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Read the following text aloud naturally like a real human friend with warm emotion in its original language. Do not add any extra words:\n\n${cleanSpeechText}`
+                }
+              ]
+            }
+          ],
           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: {
@@ -1429,7 +1437,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE (ZERO ECHO LOOP) ====================
+// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1441,6 +1449,16 @@ function setupLiveVoiceEngine() {
   const stateDot = document.getElementById("live-state-dot");
   const interruptBtn = document.getElementById("live-interrupt-btn");
   const settingsVoiceSelect = document.getElementById("settings-voice-select");
+  const speechLangBtn = document.getElementById("live-speech-lang-btn");
+  const speechLangLabel = document.getElementById("live-speech-lang-label");
+
+  const SPEECH_LANGS = [
+    { code: "bn-IN", label: "বাংলা" },
+    { code: "hi-IN", label: "हिन्दी" },
+    { code: "en-IN", label: "English" }
+  ];
+  let speechLangIdx = parseInt(localStorage.getItem("mindora_speech_lang_idx") || "0", 10) % SPEECH_LANGS.length;
+  if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
 
   let liveAudioObj = null;
   let isAiSpeakingTurn = false;
@@ -1457,6 +1475,18 @@ function setupLiveVoiceEngine() {
       studioVoiceIndex = parseInt(settingsVoiceSelect.value, 10) || 0;
       localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
       if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+    };
+  }
+
+  if (speechLangBtn) {
+    speechLangBtn.onclick = () => {
+      speechLangIdx = (speechLangIdx + 1) % SPEECH_LANGS.length;
+      localStorage.setItem("mindora_speech_lang_idx", String(speechLangIdx));
+      if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
+      if (recognition && isLiveActive && !isLiveMuted && !isAiSpeakingTurn) {
+        try { recognition.abort(); } catch (e) {}
+        setTimeout(safeStartMic, 250);
+      }
     };
   }
 
@@ -1489,8 +1519,7 @@ function setupLiveVoiceEngine() {
   function safeStartMic() {
     if (!recognition || !isLiveActive || isLiveMuted || isAiSpeakingTurn || isWaitingForAiReply) return;
     try {
-      const lang = getCurrentLang();
-      recognition.lang = lang === "bn" ? "bn-IN" : lang === "hi" ? "hi-IN" : "en-IN";
+      recognition.lang = SPEECH_LANGS[speechLangIdx].code;
       recognition.start();
       setLiveTurnUI("listening");
     } catch (e) {}
@@ -1526,11 +1555,13 @@ function setupLiveVoiceEngine() {
         if (finalTranscript.trim()) {
           isWaitingForAiReply = true;
           try { recognition.stop(); } catch (e) {}
-          if (userCaption) userCaption.textContent = `You: "${finalTranscript.trim()}"`;
-          if (statusText) statusText.textContent = "Thinking...";
+          const spokenText = finalTranscript.trim();
+          if (userCaption) userCaption.textContent = `তুমি: "${spokenText}"`;
+          if (statusText) statusText.textContent = "ভাবছি...";
           setLiveTurnUI("thinking");
 
-          sendPromptPipeline(finalTranscript.trim(), (aiReply) => {
+          const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Reply naturally in 2-3 short conversational sentences without markdown symbols, bullet points, or emojis, as this will be spoken aloud.]`;
+          sendPromptPipeline(livePrompt, (aiReply) => {
             isWaitingForAiReply = false;
             speakInLiveMode(aiReply);
           });
@@ -1562,12 +1593,12 @@ function setupLiveVoiceEngine() {
       if (isLiveMuted) {
         setLiveTurnUI("muted");
       } else {
-        if (statusText) statusText.textContent = "Listening... Go ahead.";
-        setTimeout(safeStartMic, 450);
+        if (statusText) statusText.textContent = "শুনছি... বলো।";
+        setTimeout(safeStartMic, 500);
       }
     };
 
-    if (statusText) statusText.textContent = text.replace(/[*#`_~>$]/g, "").slice(0, 220);
+    if (statusText) statusText.textContent = text.replace(/[*#`_~>$]/g, "").slice(0, 260);
 
     if (!isLiveSpeakerOn || !isLiveActive) {
       finishSpeakingTurn();
@@ -1618,13 +1649,14 @@ function setupLiveVoiceEngine() {
     interruptBtn.onclick = () => {
       stopAllLiveAudio();
       isWaitingForAiReply = false;
-      if (statusText) statusText.textContent = "Listening...";
+      if (statusText) statusText.textContent = "শুনছি...";
       safeStartMic();
     };
   }
 
   document.getElementById("mic-btn").onclick = () => {
     if (!recognition) return alert("Voice recognition is not supported on this browser.");
+    recognition.lang = SPEECH_LANGS[speechLangIdx].code;
     recognition.start();
   };
 
@@ -1636,7 +1668,7 @@ function setupLiveVoiceEngine() {
     isLiveMuted = false;
     isWaitingForAiReply = false;
     if (userCaption) userCaption.textContent = "";
-    if (statusText) statusText.textContent = "Listening... Speak naturally.";
+    if (statusText) statusText.textContent = "শুনছি... বাংলা, হিন্দি বা ইংরেজিতে কথা বলো।";
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
     document.getElementById("live-overlay").classList.remove("hidden");
     safeStartMic();
@@ -1652,7 +1684,7 @@ function setupLiveVoiceEngine() {
       try { recognition.abort(); } catch (e) {}
     } else {
       icon.className = "fa-solid fa-microphone";
-      if (statusText) statusText.textContent = "Listening...";
+      if (statusText) statusText.textContent = "শুনছি...";
       safeStartMic();
     }
   };

@@ -703,43 +703,62 @@
     </button>
   </div>
 
-  <!-- ==================== 7. GEMINI-STYLE LIVE VOICE OVERLAY ==================== -->
-  <div id="live-overlay" class="hidden fixed inset-0 z-50 bg-[#060811] flex flex-col items-center justify-between p-6 text-center">
-    <div class="pt-4 flex items-center gap-2">
-      <span class="px-3.5 py-1.5 rounded-full bg-[#111625] border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
-        <i class="fa-solid fa-sparkles mr-1.5"></i>MinDora Live • Neural Voice
-      </span>
+  <!-- ==================== 7. GEMINI LIVE PROFESSIONAL OVERLAY ==================== -->
+  <div id="live-overlay" class="hidden fixed inset-0 z-50 bg-[#05070d] flex flex-col justify-between p-5 text-center select-none">
+    <!-- Top Header Bar -->
+    <div class="flex items-center justify-between max-w-lg mx-auto w-full pt-2 gap-1.5">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#101524] border border-slate-800">
+        <span id="live-state-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="live-state-badge" class="text-[11px] font-semibold text-slate-200">Listening</span>
+      </div>
+
+      <!-- Speech Recognition Language Pill (Bengali / Hindi / English) -->
+      <button type="button" id="live-speech-lang-btn" class="px-3 py-1.5 rounded-full bg-[#101524] hover:bg-[#182036] border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition" title="Switch Spoken Language">
+        <i class="fa-solid fa-language"></i>
+        <span id="live-speech-lang-label">বাংলা</span>
+      </button>
+
+      <!-- Studio Voice Selector Pill -->
+      <button type="button" id="live-voice-style-btn" class="px-3 py-1.5 rounded-full bg-[#101524] hover:bg-[#182036] border border-slate-700/80 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition">
+        <i class="fa-solid fa-waveform-lines text-purple-400"></i>
+        <span id="live-voice-label">Zephyr</span>
+      </button>
     </div>
 
-    <div class="flex flex-col items-center my-auto px-4">
-      <div id="live-orb" class="gemini-orb-wrap mb-8">
+    <!-- Center Fluid Orb & Real-Time Transcript -->
+    <div class="flex flex-col items-center my-auto px-4 max-w-md mx-auto w-full">
+      <div id="live-orb" class="gemini-orb-wrap mb-7">
         <div class="gemini-orb-aura"></div>
         <div class="gemini-orb-core"></div>
       </div>
-      <h2 class="text-xl font-bold text-white mb-2">MinDora Live</h2>
-      <p id="live-status-text" class="text-sm text-cyan-300 max-w-md min-h-[48px] leading-relaxed">Listening... Speak in any language.</p>
+
+      <p id="live-user-caption" class="text-xs text-slate-400 italic min-h-[20px] mb-2"></p>
+      <div class="w-full p-4 rounded-2xl bg-[#0d1220]/90 border border-slate-800/80 min-h-[76px] flex items-center justify-center">
+        <p id="live-status-text" class="text-sm text-white leading-relaxed">শুনছি... বাংলা, হিন্দি বা ইংরেজিতে কথা বলো।</p>
+      </div>
     </div>
 
-    <!-- Bottom Controls: Mute, Speaker, Studio Voice Changer, End -->
-    <div class="flex items-center gap-3 pb-5">
-      <button type="button" id="live-mute-btn" class="w-12 h-12 rounded-full bg-[#13192b] hover:bg-[#1c253d] border border-slate-700 text-white flex items-center justify-center text-base transition" title="Mute / Unmute">
+    <!-- Bottom Gemini-Style Control Dock -->
+    <div class="flex items-center justify-center gap-4 pb-6">
+      <button type="button" id="live-mute-btn" class="w-14 h-14 rounded-full bg-[#141b2e] hover:bg-[#1e2742] border border-slate-700 text-white flex items-center justify-center text-lg transition shadow-lg" title="Mute / Unmute Mic">
         <i id="live-mute-icon" class="fa-solid fa-microphone"></i>
       </button>
 
-      <button type="button" id="live-speaker-btn" class="w-12 h-12 rounded-full bg-[#13192b] hover:bg-[#1c253d] border border-slate-700 text-cyan-400 flex items-center justify-center text-base transition" title="Speaker On / Off">
+      <button type="button" id="live-interrupt-btn" class="hidden px-4 h-14 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center gap-2 transition" title="Tap to Interrupt & Speak">
+        <i class="fa-solid fa-hand"></i>
+        <span>Tap to Speak</span>
+      </button>
+
+      <button type="button" id="live-speaker-btn" class="w-14 h-14 rounded-full bg-[#141b2e] hover:bg-[#1e2742] border border-slate-700 text-cyan-400 flex items-center justify-center text-lg transition shadow-lg" title="Speaker On / Off">
         <i id="live-speaker-icon" class="fa-solid fa-volume-high"></i>
       </button>
 
-      <button type="button" id="live-voice-style-btn" class="px-4 h-12 rounded-full bg-[#13192b] hover:bg-[#1c253d] border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition" title="Switch Studio Voice">
-        <i class="fa-solid fa-sliders text-purple-400"></i>
-        <span id="live-voice-label">Zephyr • Warm</span>
-      </button>
-
-      <button type="button" id="close-live-btn" class="w-12 h-12 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center text-base shadow-lg shadow-red-600/30 transition" title="End Call">
-        <i class="fa-solid fa-phone-slash"></i>
+      <button type="button" id="close-live-btn" class="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center text-lg shadow-lg shadow-red-600/35 transition" title="End Live Call">
+        <i class="fa-solid fa-xmark text-xl"></i>
       </button>
     </div>
   </div>
+
 
   <!-- ==================== 8. HD IMAGE STUDIO MODAL ==================== -->
   <div id="imagine-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
