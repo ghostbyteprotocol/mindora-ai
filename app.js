@@ -1425,69 +1425,161 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI-STYLE LIVE NEURAL VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE (ZERO ECHO LOOP) ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 
   const orb = document.getElementById("live-orb");
   const statusText = document.getElementById("live-status-text");
-  let liveAudioObj = null;
+  const userCaption = document.getElementById("live-user-caption");
+  const stateBadge = document.getElementById("live-state-badge");
+  const stateDot = document.getElementById("live-state-dot");
+  const interruptBtn = document.getElementById("live-interrupt-btn");
+  const settingsVoiceSelect = document.getElementById("settings-voice-select");
 
-  const isLiveAudioPlaying = () =>
-    (liveAudioObj && !liveAudioObj.paused) || (window.speechSynthesis && window.speechSynthesis.speaking);
+  let liveAudioObj = null;
+  let isAiSpeakingTurn = false;
+  let isWaitingForAiReply = false;
+
+  // Sync voice choice across Live Overlay, Listen Buttons, and Settings
+  const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
+  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % STUDIO_VOICES.length;
+  document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+  if (settingsVoiceSelect) {
+    settingsVoiceSelect.value = String(studioVoiceIndex);
+    settingsVoiceSelect.onchange = () => {
+      studioVoiceIndex = parseInt(settingsVoiceSelect.value, 10) || 0;
+      localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
+      document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+    };
+  }
+
+  function setLiveTurnUI(state) {
+    if (state === "listening") {
+      stateBadge.textContent = "Listening";
+      stateDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+      orb.classList.remove("speaking", "muted");
+      interruptBtn.classList.add("hidden");
+    } else if (state === "thinking") {
+      stateBadge.textContent = "Thinking...";
+      stateDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-ping";
+      orb.classList.remove("speaking");
+      interruptBtn.classList.add("hidden");
+    } else if (state === "speaking") {
+      stateBadge.textContent = "MinDora Speaking";
+      stateDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-pulse";
+      orb.classList.add("speaking");
+      interruptBtn.classList.remove("hidden");
+    } else if (state === "muted") {
+      stateBadge.textContent = "Muted";
+      stateDot.className = "w-2 h-2 rounded-full bg-red-400";
+      orb.classList.add("muted");
+      orb.classList.remove("speaking");
+      interruptBtn.classList.add("hidden");
+    }
+  }
+
+  function safeStartMic() {
+    if (!recognition || !isLiveActive || isLiveMuted || isAiSpeakingTurn || isWaitingForAiReply) return;
+    try {
+      recognition.lang = getCurrentLang() === "bn" ? "bn-IN" : getCurrentLang() === "hi" ? "hi-IN" : "en-IN";
+      recognition.start();
+      setLiveTurnUI("listening");
+    } catch (e) {}
+  }
+
+  function stopAllLiveAudio() {
+    isAiSpeakingTurn = false;
+    if (liveAudioObj) {
+      liveAudioObj.pause();
+      liveAudioObj.src = "";
+      liveAudioObj = null;
+    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
 
   if (recognition) {
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
 
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
+      // Strictly ignore any echo while AI is speaking or thinking
+      if (isAiSpeakingTurn || isWaitingForAiReply) return;
+
+      let interim = "";
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const txt = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalTranscript += txt;
+        else interim += txt;
+      }
+
       if (isLiveActive) {
-        statusText.textContent = `"${transcript}"`;
-        sendPromptPipeline(transcript, (aiReply) => speakInLiveMode(aiReply, recognition));
-      } else {
+        if (interim) userCaption.textContent = `"${interim}..."`;
+        if (finalTranscript.trim()) {
+          // Lock mic immediately before sending so AI never hears itself
+          isWaitingForAiReply = true;
+          try { recognition.stop(); } catch (e) {}
+          userCaption.textContent = `You: "${finalTranscript.trim()}"`;
+          statusText.textContent = "Thinking...";
+          setLiveTurnUI("thinking");
+
+          sendPromptPipeline(finalTranscript.trim(), (aiReply) => {
+            isWaitingForAiReply = false;
+            speakInLiveMode(aiReply);
+          });
+        }
+      } else if (finalTranscript.trim()) {
         const input = document.getElementById("chat-input");
-        input.value = (input.value + " " + transcript).trim();
+        input.value = (input.value + " " + finalTranscript).trim();
         input.focus();
       }
     };
 
+    recognition.onerror = () => {
+      if (isLiveActive && !isLiveMuted && !isAiSpeakingTurn && !isWaitingForAiReply) {
+        setTimeout(safeStartMic, 450);
+      }
+    };
+
     recognition.onend = () => {
-      if (isLiveActive && !isLiveMuted && !isLiveAudioPlaying()) {
-        try { recognition.start(); } catch (e) {}
+      if (isLiveActive && !isLiveMuted && !isAiSpeakingTurn && !isWaitingForAiReply) {
+        setTimeout(safeStartMic, 350);
       }
     };
   }
 
-  async function speakInLiveMode(text, rec) {
-    const resumeListening = () => {
-      orb.classList.remove("speaking");
-      if (isLiveActive && !isLiveMuted && rec) {
+  async function speakInLiveMode(text) {
+    const finishSpeakingTurn = () => {
+      isAiSpeakingTurn = false;
+      if (!isLiveActive) return;
+      if (isLiveMuted) {
+        setLiveTurnUI("muted");
+      } else {
         statusText.textContent = "Listening... Go ahead.";
-        try { rec.start(); } catch (e) {}
+        setTimeout(safeStartMic, 450); // 450ms echo guard buffer before reopening mic
       }
     };
 
-    if (!isLiveSpeakerOn) {
-      resumeListening();
+    statusText.textContent = text.replace(/[*#`_~>$]/g, "").slice(0, 220);
+
+    if (!isLiveSpeakerOn || !isLiveActive) {
+      finishSpeakingTurn();
       return;
     }
 
     stopCurrentSpeech();
-    if (liveAudioObj) {
-      liveAudioObj.pause();
-      liveAudioObj = null;
-    }
-
-    orb.classList.add("speaking");
-    statusText.textContent = "MinDora is speaking...";
+    stopAllLiveAudio();
+    isAiSpeakingTurn = true;
+    try { recognition.abort(); } catch (e) {}
+    setLiveTurnUI("speaking");
 
     const voiceName = STUDIO_VOICES[studioVoiceIndex]?.id || "Zephyr";
     const wavUrl = await fetchGeminiNeuralAudioUrl(text, voiceName);
 
-    if (!isLiveActive || !isLiveSpeakerOn) {
-      resumeListening();
+    if (!isLiveActive || !isLiveSpeakerOn || !isAiSpeakingTurn) {
+      finishSpeakingTurn();
       return;
     }
 
@@ -1495,13 +1587,13 @@ function setupLiveVoiceEngine() {
       liveAudioObj = new Audio(wavUrl);
       liveAudioObj.onended = () => {
         liveAudioObj = null;
-        resumeListening();
+        finishSpeakingTurn();
       };
       liveAudioObj.onerror = () => {
         liveAudioObj = null;
-        resumeListening();
+        finishSpeakingTurn();
       };
-      liveAudioObj.play();
+      liveAudioObj.play().catch(finishSpeakingTurn);
     } else if (window.speechSynthesis) {
       const clean = text.replace(/```[\s\S]*?```/g, "").replace(/[*#`_~>$]/g, "");
       const utter = new SpeechSynthesisUtterance(clean);
@@ -1509,12 +1601,21 @@ function setupLiveVoiceEngine() {
       utter.lang = langCode;
       const bestVoice = getBestHumanBrowserVoice(langCode);
       if (bestVoice) utter.voice = bestVoice;
-      utter.onend = resumeListening;
+      utter.onend = finishSpeakingTurn;
+      utter.onerror = finishSpeakingTurn;
       window.speechSynthesis.speak(utter);
     } else {
-      resumeListening();
+      finishSpeakingTurn();
     }
   }
+
+  // Interrupt AI mid-sentence to speak immediately
+  interruptBtn.onclick = () => {
+    stopAllLiveAudio();
+    isWaitingForAiReply = false;
+    statusText.textContent = "Listening...";
+    safeStartMic();
+  };
 
   document.getElementById("mic-btn").onclick = () => {
     if (!recognition) return alert("Voice recognition is not supported on this browser.");
@@ -1524,28 +1625,29 @@ function setupLiveVoiceEngine() {
   document.getElementById("live-talk-btn").onclick = () => {
     if (!recognition) return alert("Live Voice is not supported on this browser.");
     stopCurrentSpeech();
+    stopAllLiveAudio();
     isLiveActive = true;
     isLiveMuted = false;
-    orb.classList.remove("muted", "speaking");
+    isWaitingForAiReply = false;
+    userCaption.textContent = "";
+    statusText.textContent = "Listening... Speak naturally.";
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
     document.getElementById("live-overlay").classList.remove("hidden");
-    statusText.textContent = "Listening... Speak in any language.";
-    try { recognition.start(); } catch (e) {}
+    safeStartMic();
   };
 
   document.getElementById("live-mute-btn").onclick = () => {
     isLiveMuted = !isLiveMuted;
     const icon = document.getElementById("live-mute-icon");
     if (isLiveMuted) {
-      orb.classList.add("muted");
       icon.className = "fa-solid fa-microphone-slash text-red-400";
       statusText.textContent = "Microphone Muted";
-      if (recognition) recognition.stop();
+      setLiveTurnUI("muted");
+      try { recognition.abort(); } catch (e) {}
     } else {
-      orb.classList.remove("muted");
       icon.className = "fa-solid fa-microphone";
       statusText.textContent = "Listening...";
-      if (recognition) try { recognition.start(); } catch (e) {}
+      safeStartMic();
     }
   };
 
@@ -1555,33 +1657,29 @@ function setupLiveVoiceEngine() {
     if (isLiveSpeakerOn) {
       icon.className = "fa-solid fa-volume-high text-cyan-400";
     } else {
-      if (liveAudioObj) {
-        liveAudioObj.pause();
-        liveAudioObj = null;
-      }
-      window.speechSynthesis.cancel();
-      orb.classList.remove("speaking");
+      stopAllLiveAudio();
       icon.className = "fa-solid fa-volume-xmark text-slate-500";
+      if (!isLiveMuted) safeStartMic();
     }
   };
 
   document.getElementById("live-voice-style-btn").onclick = () => {
     studioVoiceIndex = (studioVoiceIndex + 1) % STUDIO_VOICES.length;
-    document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label;
+    localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
+    document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+    if (settingsVoiceSelect) settingsVoiceSelect.value = String(studioVoiceIndex);
   };
 
   document.getElementById("close-live-btn").onclick = () => {
     isLiveActive = false;
-    if (liveAudioObj) {
-      liveAudioObj.pause();
-      liveAudioObj = null;
-    }
-    window.speechSynthesis.cancel();
+    isWaitingForAiReply = false;
+    stopAllLiveAudio();
     orb.classList.remove("speaking", "muted");
-    if (recognition) recognition.stop();
+    try { recognition.abort(); } catch (e) {}
     document.getElementById("live-overlay").classList.add("hidden");
   };
 }
+
 
 function escapeHtml(str) {
   return (str || "").replace(/[&<>"']/g, (m) => ({

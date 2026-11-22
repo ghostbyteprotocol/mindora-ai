@@ -944,6 +944,16 @@
             <textarea id="settings-custom-prompt" rows="4" placeholder="e.g., Always explain with real-world examples, keep answers crisp..."
               class="w-full p-3 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500"></textarea>
           </div>
+          <div>
+            <label class="block text-xs font-semibold text-emerald-400 mb-1.5">Gemini Neural Voice (Live Talk & Listen)</label>
+            <select id="settings-voice-select" class="w-full px-3.5 py-2.5 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500">
+              <option value="0">Zephyr (Warm & Natural)</option>
+              <option value="1">Kore (Clear & Calm)</option>
+              <option value="2">Puck (Upbeat & Friendly)</option>
+              <option value="3">Fenrir (Deep & Bold)</option>
+              <option value="4">Aoede (Soft & Expressive)</option>
+            </select>
+          </div>
 
           <div class="flex justify-end">
             <button type="button" id="save-personalization-btn" data-i18n="save_changes" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">
