@@ -48,10 +48,10 @@ jobs:
           EOF
           npx cap add android
 
-      - name: Generate clean PNG app icons from logo.png
+      - name: Generate crisp PNG app icons from logo.png
         run: |
           python3 -c '
-          import os, struct, zlib
+          import os, shutil, struct, zlib
 
           source_logo = "logo.png"
           res_root = "mobile-app/android/app/src/main/res"
@@ -63,7 +63,7 @@ jobs:
               "mipmap-xxxhdpi": 192,
           }
 
-          def fallback_png(width, height, color=(15, 23, 42, 255)):
+          def fallback_png(width, height, color=(37, 99, 235, 255)):
               def make_chunk(chunk_type, chunk_data):
                   crc = zlib.crc32(chunk_type + chunk_data) & 0xffffffff
                   return struct.pack("!I", len(chunk_data)) + chunk_type + chunk_data + struct.pack("!I", crc)
@@ -73,26 +73,29 @@ jobs:
               compressed = zlib.compress(raw_rows, level=9)
               return b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", ihdr) + make_chunk(b"IDAT", compressed) + make_chunk(b"IEND", b"")
 
+          for entry in os.listdir(res_root):
+              full_path = os.path.join(res_root, entry)
+              if entry.startswith("mipmap-anydpi") and os.path.isdir(full_path):
+                  shutil.rmtree(full_path, ignore_errors=True)
+
           pil_img = None
           try:
               from PIL import Image
               if os.path.exists(source_logo):
-                  pil_img = Image.open(source_logo).convert("RGBA")
+                  raw_img = Image.open(source_logo).convert("RGBA")
+                  # Put on a clean deep navy-blue card so logo is always clearly visible
+                  bg = Image.new("RGBA", raw_img.size, (13, 18, 32, 255))
+                  pil_img = Image.alpha_composite(bg, raw_img)
           except Exception:
               pil_img = None
-
-          for current_root, _, file_list in os.walk(res_root):
-              if "mipmap-anydpi-v26" in current_root:
-                  for fname in file_list:
-                      if fname.startswith("ic_launcher") and fname.endswith(".xml"):
-                          try:
-                              os.remove(os.path.join(current_root, fname))
-                          except OSError:
-                              pass
 
           for folder, px in mipmap_sizes.items():
               target_folder = os.path.join(res_root, folder)
               os.makedirs(target_folder, exist_ok=True)
+              for xml_name in ["ic_launcher.xml", "ic_launcher_round.xml"]:
+                  xml_path = os.path.join(target_folder, xml_name)
+                  if os.path.exists(xml_path):
+                      os.remove(xml_path)
               for icon_file in ["ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"]:
                   dest_file = os.path.join(target_folder, icon_file)
                   if pil_img is not None:
