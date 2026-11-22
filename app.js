@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Custom Premium UI, Voice Preview Play Buttons, Developer Persona & Smart Auto-Lang)
+// app.js — MinDora AI Core Engine (100% Custom Modals/Toasts, Synced Text+Voice & Tiered Developer Persona)
 import { db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -17,6 +17,127 @@ import {
   getDocs,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ==================== CUSTOM WEBSITE DIALOGS & TOASTS (ZERO BROWSER POPUPS) ====================
+function showCustomToast(message, type = "info") {
+  let container = document.getElementById("mindora-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "mindora-toast-container";
+    container.className = "fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none w-[92%] max-w-sm";
+    document.body.appendChild(container);
+  }
+
+  const borderClass =
+    type === "error"
+      ? "border-red-500/60 text-red-200"
+      : type === "success"
+      ? "border-emerald-500/60 text-emerald-200"
+      : "border-cyan-500/50 text-white";
+
+  const iconHtml =
+    type === "error"
+      ? `<i class="fa-solid fa-circle-exclamation text-red-400"></i>`
+      : type === "success"
+      ? `<i class="fa-solid fa-circle-check text-emerald-400"></i>`
+      : `<i class="fa-solid fa-sparkles text-cyan-400"></i>`;
+
+  const toast = document.createElement("div");
+  toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-[#0d1220]/95 border ${borderClass} shadow-2xl backdrop-blur-xl text-xs font-medium transition-all duration-300 opacity-0 -translate-y-2`;
+  toast.innerHTML = `${iconHtml}<span class="leading-snug">${escapeHtml(String(message))}</span>`;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.remove("opacity-0", "-translate-y-2");
+  });
+
+  setTimeout(() => {
+    toast.classList.add("opacity-0", "-translate-y-2");
+    setTimeout(() => toast.remove(), 300);
+  }, 3200);
+}
+
+// Override native browser alert globally so even external modules use our custom toast
+window.alert = (msg) => showCustomToast(msg, "info");
+
+function showCustomConfirm({ title = "Confirm Action", message = "", confirmText = "Confirm", danger = false }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4";
+    overlay.innerHTML = `
+      <div class="w-full max-w-xs rounded-3xl bg-[#0d1220] border border-slate-800 p-5 shadow-2xl space-y-4">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl ${danger ? "bg-red-500/15 text-red-400" : "bg-blue-600/20 text-cyan-400"} flex items-center justify-center shrink-0">
+            <i class="fa-solid ${danger ? "fa-trash-can" : "fa-circle-question"}"></i>
+          </div>
+          <h3 class="text-sm font-bold text-white">${escapeHtml(title)}</h3>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">${escapeHtml(message)}</p>
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button type="button" id="md-dlg-cancel" class="px-4 py-2 rounded-xl bg-[#151c30] hover:bg-slate-800 text-slate-300 text-xs font-semibold transition">Cancel</button>
+          <button type="button" id="md-dlg-ok" class="px-4 py-2 rounded-xl ${
+            danger ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
+          } text-white text-xs font-semibold transition">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const cleanup = (val) => {
+      overlay.remove();
+      resolve(val);
+    };
+    overlay.querySelector("#md-dlg-cancel").onclick = () => cleanup(false);
+    overlay.querySelector("#md-dlg-ok").onclick = () => cleanup(true);
+    overlay.onclick = (e) => {
+      if (e.target === overlay) cleanup(false);
+    };
+  });
+}
+
+function showCustomPrompt({ title = "Rename", defaultValue = "", placeholder = "Type here..." }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4";
+    overlay.innerHTML = `
+      <div class="w-full max-w-xs rounded-3xl bg-[#0d1220] border border-slate-800 p-5 shadow-2xl space-y-4">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-pen"></i>
+          </div>
+          <h3 class="text-sm font-bold text-white">${escapeHtml(title)}</h3>
+        </div>
+        <input type="text" id="md-prompt-input" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(placeholder)}"
+          class="w-full px-3.5 py-2.5 rounded-2xl bg-[#080b14] border border-slate-700 focus:border-cyan-400 text-xs text-white focus:outline-none" />
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button type="button" id="md-prm-cancel" class="px-4 py-2 rounded-xl bg-[#151c30] hover:bg-slate-800 text-slate-300 text-xs font-semibold transition">Cancel</button>
+          <button type="button" id="md-prm-ok" class="px-4 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 text-xs font-bold transition">Save</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const inputEl = overlay.querySelector("#md-prompt-input");
+    setTimeout(() => {
+      inputEl.focus();
+      inputEl.select();
+    }, 50);
+
+    const cleanup = (val) => {
+      overlay.remove();
+      resolve(val);
+    };
+    overlay.querySelector("#md-prm-cancel").onclick = () => cleanup(null);
+    overlay.querySelector("#md-prm-ok").onclick = () => cleanup(inputEl.value.trim() || null);
+    inputEl.onkeydown = (e) => {
+      if (e.key === "Enter") cleanup(inputEl.value.trim() || null);
+      if (e.key === "Escape") cleanup(null);
+    };
+    overlay.onclick = (e) => {
+      if (e.target === overlay) cleanup(null);
+    };
+  });
+}
 
 // ==================== GLOBAL STATE ====================
 let currentUser = null;
@@ -45,18 +166,24 @@ let activeVoicesList = [...STUDIO_VOICES];
 let voicesSyncedFromApi = false;
 let lastElevenLabsError = "";
 let activePreviewVoiceId = null;
+let textSyncInterval = null;
 const voicePreviewCache = {};
 
 const sharedAudioPlayer = new Audio();
 sharedAudioPlayer.preload = "auto";
 
-// Core AI & Developer Identity Prompt
+// Tiered Developer & AI Identity Rules (Strict Disclosure Control)
 const MINDORA_IDENTITY_PROMPT = `
-Identity & Creator Knowledge (Use naturally ONLY when asked who you are, for your introduction, or about your creator/developer):
-- You are **MinDora AI**, an intelligent, warm, and fast multilingual personal AI assistant.
-- You were created and developed by **Ayan Karmakar (অয়ন কর্মকার)**, a passionate Computer Science & Engineering (CSE) undergraduate student from Purulia, West Bengal, India (studying B.Tech CSE at Bankura Unnayani Institute of Engineering under MAKAUT).
-- If asked about your developer, speak proudly and warmly about Ayan Karmakar—mentioning that he engineered MinDora AI to make smart, human-like AI accessible across English, Bengali, Hindi, and global languages.
-- Do NOT randomly bring up your developer in normal everyday questions unless the user asks about you or your creator.
+Identity & Developer Knowledge (Follow these exact rules ONLY when asked about yourself or your developer/creator):
+1. Self-Introduction: You are **MinDora AI**, an intelligent, fast, multilingual personal AI assistant.
+2. Basic Developer Intro (When asked who created/developed you or for basic details about your developer):
+   - State ONLY: You were developed by **Ayan Karmakar**, a **B.Tech Computer Science and Engineering (CSE)** student at **Bankura Unnayani Institute of Engineering** under **MAKAUT** (Maulana Abul Kalam Azad University of Technology).
+   - Keep it clean and focused on his name, department, college, and MAKAUT—do NOT dump extra personal info unless specifically asked.
+3. Additional / Detailed Developer Info (ONLY when the user explicitly asks for more/additional details about Ayan Karmakar):
+   - Share that he hails from **Purulia, West Bengal, India**, and is passionate about Artificial Intelligence, software engineering, web & mobile development, and building human-like multilingual AI systems.
+4. Instagram & Google Search (ONLY when asked for his Instagram ID, social handles, or where to find him):
+   - Share his Instagram ID **@the_atheist_ayan** along with the direct link **https://instagram.com/the_atheist_ayan**, and let them know that searching **"Atheist Ayan"** on Google will bring up all his information.
+5. Do NOT bring up your developer in normal everyday queries unrelated to you or your creator.
 `;
 
 function getActiveElevenLabsKey() {
@@ -72,7 +199,6 @@ function unlockMobileAudio() {
   } catch (e) {}
 }
 
-// Fetch valid voices directly from ElevenLabs account
 async function syncElevenLabsVoices() {
   if (voicesSyncedFromApi) return;
   const elKey = getActiveElevenLabsKey();
@@ -182,13 +308,11 @@ function upgradeNativeSelectToCustom(selectId, extraClass = "") {
 
 // ==================== INITIALIZATION ====================
 document.addEventListener("DOMContentLoaded", () => {
-  // Enforce English as default language on first load
   if (!localStorage.getItem("mindora_lang")) {
     localStorage.setItem("mindora_lang", "en");
   }
   applyLanguage(getCurrentLang());
 
-  // Upgrade all native browser <select> elements to sleek custom website menus
   upgradeNativeSelectToCustom("model-select", "min-w-[148px]");
   upgradeNativeSelectToCustom("imagine-style", "w-full");
   upgradeNativeSelectToCustom("imagine-ratio", "w-full");
@@ -441,9 +565,15 @@ document.getElementById("ctx-pin-btn").onclick = async () => {
 
 document.getElementById("ctx-rename-btn").onclick = async () => {
   if (!targetContextChat) return;
-  const newTitle = prompt("Rename conversation:", targetContextChat.title || "");
-  if (newTitle && newTitle.trim()) {
-    await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), { title: newTitle.trim() });
+  const chat = targetContextChat;
+  const newTitle = await showCustomPrompt({
+    title: "Rename Conversation",
+    defaultValue: chat.title || "",
+    placeholder: "Enter conversation name..."
+  });
+  if (newTitle) {
+    await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), { title: newTitle });
+    showCustomToast("Conversation renamed", "success");
   }
 };
 
@@ -455,6 +585,7 @@ document.getElementById("ctx-lock-btn").onclick = () => {
     const nextLocked = !chat.locked;
     await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), { locked: nextLocked });
     if (!nextLocked) unlockedChatsSession.add(chat.id);
+    showCustomToast(nextLocked ? "Chat locked" : "Chat unlocked", "success");
   });
 };
 
@@ -465,6 +596,7 @@ document.getElementById("ctx-hide-btn").onclick = () => {
   openPinModal(mode, async () => {
     await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), { hidden: true });
     if (currentChatId === chat.id) startNewChat();
+    showCustomToast("Moved to Hidden Vault", "success");
   });
 };
 
@@ -487,9 +619,17 @@ document.getElementById("ctx-export-btn").onclick = async () => {
 
 document.getElementById("ctx-delete-btn").onclick = async () => {
   if (!targetContextChat) return;
-  if (confirm(`Delete "${targetContextChat.title}" permanently?`)) {
-    await deleteDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id));
-    if (currentChatId === targetContextChat.id) startNewChat();
+  const chat = targetContextChat;
+  const ok = await showCustomConfirm({
+    title: "Delete Conversation",
+    message: `Delete "${chat.title || "this chat"}" permanently? This cannot be undone.`,
+    confirmText: "Delete",
+    danger: true
+  });
+  if (ok) {
+    await deleteDoc(doc(db, "users", currentUser.uid, "chats", chat.id));
+    if (currentChatId === chat.id) startNewChat();
+    showCustomToast("Conversation deleted", "info");
   }
 };
 
@@ -562,21 +702,36 @@ function openVaultContextMenu(pos, chat) {
 document.getElementById("vctx-unhide-btn").onclick = async () => {
   if (!targetContextChat) return;
   await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), { hidden: false });
+  showCustomToast("Chat unhidden", "success");
 };
 
 document.getElementById("vctx-rename-btn").onclick = async () => {
   if (!targetContextChat) return;
-  const name = prompt("Rename hidden chat:", targetContextChat.title || "");
-  if (name && name.trim()) {
-    await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), { title: name.trim() });
+  const chat = targetContextChat;
+  const name = await showCustomPrompt({
+    title: "Rename Hidden Chat",
+    defaultValue: chat.title || "",
+    placeholder: "Enter new name..."
+  });
+  if (name) {
+    await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), { title: name });
+    showCustomToast("Hidden chat renamed", "success");
   }
 };
 
 document.getElementById("vctx-delete-btn").onclick = async () => {
   if (!targetContextChat) return;
-  if (confirm("Delete this hidden chat permanently?")) {
-    await deleteDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id));
-    if (currentChatId === targetContextChat.id) startNewChat();
+  const chat = targetContextChat;
+  const ok = await showCustomConfirm({
+    title: "Delete Hidden Chat",
+    message: "Delete this hidden conversation permanently?",
+    confirmText: "Delete",
+    danger: true
+  });
+  if (ok) {
+    await deleteDoc(doc(db, "users", currentUser.uid, "chats", chat.id));
+    if (currentChatId === chat.id) startNewChat();
+    showCustomToast("Hidden chat deleted", "info");
   }
 };
 
@@ -664,7 +819,7 @@ document.getElementById("pin-submit-btn").onclick = async () => {
     await setDoc(doc(db, "users", currentUser.uid, "settings", "security"), { pin }, { merge: true });
     updatePinStatusUI();
     document.getElementById("pin-modal").classList.add("hidden");
-    alert("Security PIN updated successfully!");
+    showCustomToast("Security PIN updated successfully!", "success");
   } else {
     if (pin !== securityPin) return fail("Incorrect PIN. Try again.");
     document.getElementById("pin-modal").classList.add("hidden");
@@ -675,7 +830,7 @@ document.getElementById("pin-submit-btn").onclick = async () => {
 document.getElementById("forgot-pin-trigger-btn").onclick = () => {
   document.getElementById("pin-modal").classList.add("hidden");
   openForgotPinVerification(() => {
-    openPinModal("setup", () => alert("New Security PIN set!"));
+    openPinModal("setup", () => showCustomToast("New Security PIN set!", "success"));
   });
 };
 
@@ -958,7 +1113,12 @@ async function downloadImageHD(url) {
 
 // ==================== 6. ELEVENLABS V3 MULTILINGUAL VOICE ENGINE ====================
 function stopCurrentSpeech() {
+  if (textSyncInterval) {
+    clearInterval(textSyncInterval);
+    textSyncInterval = null;
+  }
   sharedAudioPlayer.pause();
+  sharedAudioPlayer.onplay = null;
   sharedAudioPlayer.onended = null;
   sharedAudioPlayer.onerror = null;
   if (activeAudioBtn) {
@@ -1055,7 +1215,7 @@ async function toggleNeuralListen(text, btnEl) {
     sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else {
     stopCurrentSpeech();
-    alert(`ElevenLabs Error: ${lastElevenLabsError || "Check Settings -> Account."}`);
+    showCustomToast(`Voice Error: ${lastElevenLabsError || "Check Settings -> Account."}`, "error");
   }
 }
 
@@ -1161,7 +1321,7 @@ function renderCustomVoiceListUI() {
       } else {
         activePreviewVoiceId = null;
         renderCustomVoiceListUI();
-        alert(`Voice Preview Error: ${lastElevenLabsError || "Check your ElevenLabs API key."}`);
+        showCustomToast(`Preview Error: ${lastElevenLabsError || "Check ElevenLabs API key."}`, "error");
       }
     };
 
@@ -1216,7 +1376,7 @@ function setupChatInputAndTools() {
     if (!file) return;
 
     if (file.type.startsWith("video/")) {
-      alert("Video files are not allowed. Upload images, PDFs, audio, or code/text files.");
+      showCustomToast("Video files are not supported. Upload images, PDFs, audio, or code.", "error");
       e.target.value = "";
       return;
     }
@@ -1305,7 +1465,7 @@ function setStreamingState(active) {
   }
 }
 
-// ==================== 8. SMOOTH TYPEWRITER STREAMING & ZERO-FREEZE LIVE CALLBACK ====================
+// ==================== 8. SMOOTH TYPEWRITER STREAMING & SYNCHRONIZED LIVE PIPELINE ====================
 async function animateTextStream(targetEl, fullText, boxEl, signal) {
   const words = fullText.split(/(\s+)/);
   let rendered = "";
@@ -1469,8 +1629,14 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
       const data = await res.json();
       if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
         const rawReply = data.candidates[0].content.parts[0].text;
-        if (liveVoiceCallback) liveVoiceCallback(rawReply);
-        finalReply = await animateTextStream(textTarget, rawReply, box, streamAbortController.signal);
+        if (liveVoiceCallback) {
+          // Trigger synchronized voice + text display pipeline immediately
+          liveVoiceCallback(rawReply);
+          textTarget.innerHTML = marked.parse(rawReply);
+          finalReply = rawReply;
+        } else {
+          finalReply = await animateTextStream(textTarget, rawReply, box, streamAbortController.signal);
+        }
         succeeded = true;
         break;
       } else if (data.error?.message) {
@@ -1555,7 +1721,6 @@ function setupModalsAndSettings() {
 
   renderCustomVoiceListUI();
 
-  // Inject ElevenLabs Key input box inside Settings -> Account tab
   const accountPanel = document.getElementById("spanel-account");
   if (accountPanel && !document.getElementById("settings-el-key-input")) {
     const elBox = document.createElement("div");
@@ -1577,9 +1742,7 @@ function setupModalsAndSettings() {
         voicesSyncedFromApi = false;
         Object.keys(voicePreviewCache).forEach((k) => delete voicePreviewCache[k]);
         await syncElevenLabsVoices();
-        const btn = document.getElementById("save-el-key-btn");
-        btn.textContent = "Saved!";
-        setTimeout(() => (btn.textContent = "Save"), 1400);
+        showCustomToast("ElevenLabs API Key saved!", "success");
       }
     };
   }
@@ -1609,9 +1772,7 @@ function setupModalsAndSettings() {
       { merge: true }
     );
 
-    const btn = document.getElementById("save-personalization-btn");
-    btn.textContent = "Saved!";
-    setTimeout(() => (btn.textContent = t("save_changes")), 1400);
+    showCustomToast("Personalization saved!", "success");
   };
 
   document.getElementById("open-change-pin-btn").onclick = () => {
@@ -1622,7 +1783,7 @@ function setupModalsAndSettings() {
     openForgotPinVerification(() => {
       openPinModal("setup", () => {
         updatePinStatusUI();
-        alert("New Security PIN saved!");
+        showCustomToast("New Security PIN saved!", "success");
       });
     });
   };
@@ -1695,7 +1856,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SMART AUTO-LANGUAGE ENGINE ====================
+// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SYNCHRONIZED TEXT & VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1715,7 +1876,7 @@ function setupLiveVoiceEngine() {
     { id: "bn-IN", label: "Bengali" },
     { id: "hi-IN", label: "Hindi" }
   ];
-  let speechModeIdx = 0; // Default Auto-Detect starting in English
+  let speechModeIdx = 0;
   let detectedRecLang = "en-IN";
   if (speechLangLabel) speechLangLabel.textContent = SPEECH_MODES[speechModeIdx].label;
 
@@ -1738,9 +1899,56 @@ function setupLiveVoiceEngine() {
 
   function stopAllLiveAudio() {
     isAiSpeakingTurn = false;
+    if (textSyncInterval) {
+      clearInterval(textSyncInterval);
+      textSyncInterval = null;
+    }
     sharedAudioPlayer.pause();
+    sharedAudioPlayer.onplay = null;
     sharedAudioPlayer.onended = null;
     sharedAudioPlayer.onerror = null;
+  }
+
+  // Reveals text progressively in exact sync with audio playback
+  function revealTextSyncedWithAudio(fullCleanText) {
+    if (!statusText) return;
+    if (textSyncInterval) {
+      clearInterval(textSyncInterval);
+      textSyncInterval = null;
+    }
+
+    const words = fullCleanText.split(/\s+/);
+    if (words.length <= 3) {
+      statusText.textContent = fullCleanText;
+      return;
+    }
+
+    let idx = 0;
+    statusText.textContent = "";
+    textSyncInterval = setInterval(() => {
+      if (!isLiveActive || !isAiSpeakingTurn) {
+        clearInterval(textSyncInterval);
+        textSyncInterval = null;
+        return;
+      }
+
+      if (sharedAudioPlayer.duration && !isNaN(sharedAudioPlayer.duration) && sharedAudioPlayer.duration > 0) {
+        const progress = Math.min(1, (sharedAudioPlayer.currentTime + 0.15) / sharedAudioPlayer.duration);
+        const targetWordCount = Math.max(1, Math.ceil(progress * words.length));
+        statusText.textContent = words.slice(0, targetWordCount).join(" ");
+        if (progress >= 1) {
+          clearInterval(textSyncInterval);
+          textSyncInterval = null;
+        }
+      } else {
+        idx = Math.min(words.length, idx + 1);
+        statusText.textContent = words.slice(0, idx).join(" ");
+        if (idx >= words.length) {
+          clearInterval(textSyncInterval);
+          textSyncInterval = null;
+        }
+      }
+    }, 90);
   }
 
   async function playLiveOverlayPreview(voiceIdx) {
@@ -1763,17 +1971,23 @@ function setupLiveVoiceEngine() {
     }
 
     if (mp3Url) {
-      if (statusText) statusText.textContent = sampleText;
-      setLiveTurnUI("speaking");
-
+      isAiSpeakingTurn = true;
       sharedAudioPlayer.src = mp3Url;
+      sharedAudioPlayer.onplay = () => {
+        setLiveTurnUI("speaking");
+        revealTextSyncedWithAudio(sampleText);
+      };
       sharedAudioPlayer.onended = () => {
+        isAiSpeakingTurn = false;
+        if (statusText) statusText.textContent = sampleText;
         if (isLiveActive && !isLiveMuted) {
-          if (statusText) statusText.textContent = "Listening... Go ahead.";
-          setTimeout(safeStartMic, 450);
+          setTimeout(() => {
+            if (statusText) statusText.textContent = "Listening... Go ahead.";
+            safeStartMic();
+          }, 500);
         }
       };
-      sharedAudioPlayer.play().catch(() => {});
+      sharedAudioPlayer.play().catch(() => { isAiSpeakingTurn = false; });
     } else {
       if (statusText) statusText.textContent = `Voice error: ${lastElevenLabsError}`;
       if (isLiveActive && !isLiveMuted) setTimeout(safeStartMic, 1200);
@@ -1853,9 +2067,6 @@ function setupLiveVoiceEngine() {
         if (statusText) statusText.textContent = "Thinking...";
         setLiveTurnUI("thinking");
 
-        // Smart Language Mirroring Rule:
-        // If user says "Hello" / English -> reply in English.
-        // If user speaks Bengali or Hindi (even if transcribed phonetically in Roman letters) -> reply in Bengali/Hindi script.
         const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Strictly mirror the language the user just spoke! If they spoke English (like "Hello", "Hi", "Who are you", "Okay"), reply 100% in natural English. If they spoke Bengali (even if transcribed phonetically in Roman script like "kemon acho", "tumi ke", "ekta kotha bolo"), reply 100% in natural Bengali script (বাংলা). If they spoke Hindi (even in Roman script like "kaise ho", "kya haal hai"), reply 100% in natural Hindi Devanagari script (हिन्दी). Keep reply warm and concise (2-3 short spoken sentences) with NO markdown symbols, bullet points, or emojis.]`;
         sendPromptPipeline(livePrompt, (aiReply) => {
           isWaitingForAiReply = false;
@@ -1882,22 +2093,32 @@ function setupLiveVoiceEngine() {
     };
   }
 
+  // Hold text display until the exact millisecond the voice starts playing!
   async function speakInLiveMode(text) {
+    const cleanDisplay = text.replace(/[*#`_~>$]/g, "").trim();
+
     const finishSpeakingTurn = () => {
       isAiSpeakingTurn = false;
+      if (textSyncInterval) {
+        clearInterval(textSyncInterval);
+        textSyncInterval = null;
+      }
+      if (statusText && cleanDisplay) statusText.textContent = cleanDisplay.slice(0, 260);
       if (!isLiveActive) return;
       if (isLiveMuted) {
         setLiveTurnUI("muted");
       } else {
-        if (statusText) statusText.textContent = "Listening... Go ahead.";
-        setTimeout(safeStartMic, 450);
+        setTimeout(() => {
+          if (isLiveActive && !isLiveMuted && !isAiSpeakingTurn) {
+            if (statusText) statusText.textContent = "Listening... Go ahead.";
+            safeStartMic();
+          }
+        }, 550);
       }
     };
 
-    const cleanDisplay = text.replace(/[*#`_~>$]/g, "").trim();
-    if (statusText) statusText.textContent = cleanDisplay.slice(0, 260);
-
     if (!isLiveSpeakerOn || !isLiveActive || !cleanDisplay) {
+      if (statusText) statusText.textContent = cleanDisplay.slice(0, 260);
       finishSpeakingTurn();
       return;
     }
@@ -1906,7 +2127,10 @@ function setupLiveVoiceEngine() {
     stopAllLiveAudio();
     isAiSpeakingTurn = true;
     try { if (recognition) recognition.abort(); } catch (e) {}
-    setLiveTurnUI("speaking");
+
+    // Keep "Thinking..." visible until audio is ready so text never arrives ahead of voice
+    setLiveTurnUI("thinking");
+    if (statusText) statusText.textContent = "Thinking...";
 
     const voiceId = activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
     const mp3Url = await fetchElevenLabsAudioUrl(cleanDisplay, voiceId);
@@ -1918,12 +2142,22 @@ function setupLiveVoiceEngine() {
 
     if (mp3Url) {
       sharedAudioPlayer.src = mp3Url;
+      sharedAudioPlayer.onplay = () => {
+        // Exact millisecond voice starts -> show Speaking UI + reveal text in sync!
+        setLiveTurnUI("speaking");
+        revealTextSyncedWithAudio(cleanDisplay.slice(0, 260));
+      };
       sharedAudioPlayer.onended = finishSpeakingTurn;
       sharedAudioPlayer.onerror = finishSpeakingTurn;
-      sharedAudioPlayer.play().catch(finishSpeakingTurn);
+      sharedAudioPlayer.play().catch(() => {
+        if (statusText) statusText.textContent = cleanDisplay.slice(0, 260);
+        finishSpeakingTurn();
+      });
     } else {
-      if (statusText && lastElevenLabsError) {
-        statusText.textContent = `Voice error: ${lastElevenLabsError}`;
+      if (statusText) {
+        statusText.textContent = lastElevenLabsError
+          ? `Voice error: ${lastElevenLabsError}`
+          : cleanDisplay.slice(0, 260);
       }
       setTimeout(finishSpeakingTurn, 1200);
     }
@@ -1939,13 +2173,13 @@ function setupLiveVoiceEngine() {
   }
 
   document.getElementById("mic-btn").onclick = () => {
-    if (!recognition) return alert("Voice recognition is not supported on this browser.");
+    if (!recognition) return showCustomToast("Voice recognition is not supported on this browser.", "error");
     recognition.lang = getActiveRecognitionLang();
     recognition.start();
   };
 
   document.getElementById("live-talk-btn").onclick = () => {
-    if (!recognition) return alert("Live Voice is not supported on this browser.");
+    if (!recognition) return showCustomToast("Live Voice is not supported on this browser.", "error");
     unlockMobileAudio();
     syncElevenLabsVoices();
     stopCurrentSpeech();
@@ -1953,7 +2187,7 @@ function setupLiveVoiceEngine() {
     isLiveActive = true;
     isLiveMuted = false;
     isWaitingForAiReply = false;
-    detectedRecLang = "en-IN"; // Always start Live Talk expecting English first ("Hello" -> English reply)
+    detectedRecLang = "en-IN";
     if (userCaption) userCaption.textContent = "";
     if (statusText) statusText.textContent = "Listening... Say Hello or speak in any language.";
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
