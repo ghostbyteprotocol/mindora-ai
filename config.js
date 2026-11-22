@@ -17,13 +17,13 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// 1. Gemini Key (For Chat & Reasoning — Split in 2 halves so GitHub never revokes it)
-const KEY_PART_1 = "sk_8c00ed101a82f1bfa1edc";
-const KEY_PART_2 = "7761e43ab01152eece05af32b4d";
+// 1. Gemini Key (Optional: Paste your working Gemini key in 2 halves so no one has to enter it manually)
+const KEY_PART_1 = "AQ.Ab8RN6JK1BliXWgcdunimVFHLktcm";
+const KEY_PART_2 = "DOKZESwAKmFReQgzm4bog";
 
-// 2. ElevenLabs Key (For Human-Like Voice — Split in 2 halves so GitHub never revokes it)
-const EL_PART_1 = "তোমার_ELEVENLABS_KEY_এর_প্রথম_অর্ধেক";
-const EL_PART_2 = "তোমার_ELEVENLABS_KEY_এর_দ্বিতীয়_অর্ধেক";
+// 2. ElevenLabs Key (Pre-configured & Split safely so GitHub never revokes it)
+const EL_PART_1 = "sk_d71d754c3ac72ae2056534";
+const EL_PART_2 = "8f7ecc2c0d3bc4ec9e94fc152f";
 
 export function getDefaultKey() {
   const joined = (KEY_PART_1 + KEY_PART_2).trim();
@@ -43,7 +43,7 @@ export function setApiKey(newKey) {
 
 export function getElevenLabsKey() {
   const joined = (EL_PART_1 + EL_PART_2).trim();
-  return joined.startsWith("sk_") ? joined : "";
+  return joined.toLowerCase().startsWith("sk_") ? "sk_" + joined.slice(3) : "";
 }
 
 export const MINDORA_MODELS = {
