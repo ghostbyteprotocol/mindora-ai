@@ -1,7 +1,12 @@
-// app.js — MinDora AI Core Engine (6-Tap Top-Left Logo Hidden Vault, Custom UI, Synced Text+Voice)
-import { db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
+// app.js — MinDora AI Core Engine (Persistent Auth, Fast ElevenLabs v4 Streaming Voice, Working AI Image Gen & 6-Tap Vault)
+import { auth, db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
+import {
+  setPersistence,
+  browserLocalPersistence,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   doc,
   setDoc,
@@ -18,7 +23,10 @@ import {
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// ==================== CUSTOM WEBSITE DIALOGS & TOASTS (ZERO BROWSER POPUPS) ====================
+// Enforce persistent local login across app/browser restarts
+setPersistence(auth, browserLocalPersistence).catch(() => {});
+
+// ==================== CUSTOM WEBSITE DIALOGS & TOASTS ====================
 function showCustomToast(message, type = "info") {
   let container = document.getElementById("mindora-toast-container");
   if (!container) {
@@ -166,6 +174,7 @@ let voicesSyncedFromApi = false;
 let lastElevenLabsError = "";
 let activePreviewVoiceId = null;
 let textSyncInterval = null;
+let chatsSubscribedUid = null;
 const voicePreviewCache = {};
 
 const sharedAudioPlayer = new Audio();
@@ -304,7 +313,37 @@ function upgradeNativeSelectToCustom(selectId, extraClass = "") {
   nativeSel.parentNode.insertBefore(wrapper, nativeSel.nextSibling);
 }
 
-// ==================== INITIALIZATION ====================
+// ==================== INITIALIZATION & PERSISTENT SESSION ====================
+async function handleAuthenticatedUser(user, profile = null) {
+  if (!user) return;
+  currentUser = user;
+  if (profile) {
+    currentProfile = profile;
+    localStorage.setItem("mindora_cached_profile", JSON.stringify(profile));
+  } else if (!currentProfile) {
+    try {
+      const cached = JSON.parse(localStorage.getItem("mindora_cached_profile") || "null");
+      if (cached) currentProfile = cached;
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        currentProfile = userDoc.data();
+        localStorage.setItem("mindora_cached_profile", JSON.stringify(currentProfile));
+      }
+    } catch (e) {}
+  }
+
+  // Hide auth overlay immediately once Firebase confirms existing session
+  const authScreen = document.getElementById("auth-screen") || document.getElementById("auth-modal");
+  if (authScreen) authScreen.classList.add("hidden");
+
+  await loadUserPersonalization();
+  await loadSecurityPin();
+  if (chatsSubscribedUid !== user.uid) {
+    chatsSubscribedUid = user.uid;
+    subscribeToChats();
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   if (!localStorage.getItem("mindora_lang")) {
     localStorage.setItem("mindora_lang", "en");
@@ -322,12 +361,15 @@ document.addEventListener("DOMContentLoaded", () => {
   setupLiveVoiceEngine();
   syncElevenLabsVoices();
 
+  // Direct persistent listener so returning users never get prompted to login again
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      await handleAuthenticatedUser(user, null);
+    }
+  });
+
   initAuth(async (user, profile) => {
-    currentUser = user;
-    currentProfile = profile;
-    await loadUserPersonalization();
-    await loadSecurityPin();
-    subscribeToChats();
+    await handleAuthenticatedUser(user, profile);
   });
 });
 
@@ -446,7 +488,6 @@ function setupSidebarAndGestures() {
     };
   }
 
-  // Bottom Profile Button -> Opens Settings cleanly on tap
   const profileBtn = document.getElementById("profile-hold-btn");
   if (profileBtn) {
     profileBtn.onclick = () => {
@@ -482,7 +523,6 @@ function renderChatList() {
   const searchTerm = (document.getElementById("chat-search-input")?.value || "").trim().toLowerCase();
   listEl.innerHTML = "";
 
-  // Strictly exclude hidden chats from main sidebar list
   const visibleChats = allChats
     .filter((c) => !c.hidden && (!searchTerm || (c.title || "").toLowerCase().includes(searchTerm)))
     .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
@@ -1087,6 +1127,13 @@ function enhanceCodeBlocks(container) {
 
 async function downloadImageHD(url) {
   try {
+    if (url.startsWith("data:")) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `MinDora_AI_${Date.now()}.png`;
+      a.click();
+      return;
+    }
     const res = await fetch(url);
     const blob = await res.blob();
     const a = document.createElement("a");
@@ -1098,7 +1145,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. ELEVENLABS V3 MULTILINGUAL VOICE ENGINE ====================
+// ==================== 6. ELEVENLABS V4 / MULTILINGUAL STREAMING VOICE ENGINE ====================
 function stopCurrentSpeech() {
   if (textSyncInterval) {
     clearInterval(textSyncInterval);
@@ -1126,7 +1173,10 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
     return null;
   }
 
-  await syncElevenLabsVoices();
+  // Run voice sync in background without blocking TTS request
+  if (!voicesSyncedFromApi) {
+    syncElevenLabsVoices();
+  }
   const validVoiceId = voiceId || activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
 
   const cleanSpeechText = text
@@ -1135,29 +1185,33 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 850);
+    .slice(0, 600);
 
   if (!cleanSpeechText) return null;
 
-  const models = ["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5"];
+  // Try eleven_v4 first as requested, then ultra-fast multilingual fallback so voice never fails
+  const models = ["eleven_v4", "eleven_v3", "eleven_multilingual_v2"];
   for (const model_id of models) {
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "xi-api-key": elKey,
-          "Accept": "audio/mpeg"
-        },
-        body: JSON.stringify({
-          text: cleanSpeechText,
-          model_id,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.78
-          }
-        })
-      });
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}/stream?optimize_streaming_latency=4`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "xi-api-key": elKey,
+            "Accept": "audio/mpeg"
+          },
+          body: JSON.stringify({
+            text: cleanSpeechText,
+            model_id,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.78
+            }
+          })
+        }
+      );
 
       if (res.ok) {
         lastElevenLabsError = "";
@@ -1682,16 +1736,93 @@ async function autoCaptureMemory(text) {
   }
 }
 
-// ==================== 9. HD IMAGE STUDIO ====================
+// ==================== 9. WORKING HD IMAGE STUDIO (GEMINI NATIVE + FALLBACK) ====================
 async function triggerImageGeneration(prompt, ratio = "1024x1024") {
-  const [w, h] = ratio.split("x");
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&seed=${Date.now()}`;
-  const caption = `Generated HD artwork for: **"${prompt}"**`;
+  const box = document.getElementById("messages-box");
+  const loadingRow = document.createElement("div");
+  loadingRow.id = "img-gen-loader";
+  loadingRow.className = "flex gap-3 max-w-3xl mx-auto justify-start";
+  loadingRow.innerHTML = `
+    <div class="w-8 h-8 rounded-xl bg-[#111625] border border-slate-700/80 flex items-center justify-center shrink-0 mt-1">
+      <i class="fa-solid fa-wand-magic-sparkles text-cyan-400 text-xs animate-spin"></i>
+    </div>
+    <div class="ai-bubble px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+      <span>Generating HD artwork for "${escapeHtml(prompt)}"...</span>
+    </div>
+  `;
+  box.appendChild(loadingRow);
+  box.scrollTop = box.scrollHeight;
 
+  let finalImageUrl = null;
+  const apiKey = getApiKey();
+
+  // 1. Primary: Gemini Native Image Generation (returns instant crisp Base64 PNG)
+  if (apiKey) {
+    try {
+      const res = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": apiKey
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Generate a high-resolution, detailed image: ${prompt}` }] }],
+            generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
+          })
+        }
+      );
+      const data = await res.json();
+      const imgPart = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+      if (imgPart?.inlineData?.data) {
+        const mime = imgPart.inlineData.mimeType || "image/png";
+        finalImageUrl = `data:${mime};base64,${imgPart.inlineData.data}`;
+      }
+    } catch (e) {}
+  }
+
+  // 2. Secondary: Imagen 3 Fast API
+  if (!finalImageUrl && apiKey) {
+    try {
+      const aspect = ratio === "1024x1792" ? "9:16" : ratio === "1792x1024" ? "16:9" : "1:1";
+      const res = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": apiKey
+          },
+          body: JSON.stringify({
+            instances: [{ prompt }],
+            parameters: { sampleCount: 1, aspectRatio: aspect }
+          })
+        }
+      );
+      const data = await res.json();
+      const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+      if (b64) {
+        finalImageUrl = `data:image/png;base64,${b64}`;
+      }
+    } catch (e) {}
+  }
+
+  // 3. Fallback: Direct Flux Image Engine
+  if (!finalImageUrl) {
+    const [w, h] = ratio.split("x");
+    finalImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&model=flux&nologo=true&seed=${Date.now()}`;
+  }
+
+  const loader = document.getElementById("img-gen-loader");
+  if (loader) loader.remove();
+
+  const caption = `Generated HD artwork for: **"${prompt}"**`;
   await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
     role: "model",
     text: caption,
-    imageUrl,
+    imageUrl: finalImageUrl,
     createdAt: serverTimestamp()
   });
 
@@ -1842,7 +1973,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SYNCHRONIZED TEXT & VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE + ELEVENLABS V4 SYNCHRONIZED TEXT & VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1938,7 +2069,6 @@ function setupLiveVoiceEngine() {
 
   async function playLiveOverlayPreview(voiceIdx) {
     unlockMobileAudio();
-    await syncElevenLabsVoices();
     const voiceObj = activeVoicesList[voiceIdx] || activeVoicesList[0];
     const voiceId = voiceObj.id;
     const voiceName = voiceObj.name || voiceObj.label.split(" ")[0];
@@ -2052,7 +2182,7 @@ function setupLiveVoiceEngine() {
         if (statusText) statusText.textContent = "Thinking...";
         setLiveTurnUI("thinking");
 
-        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Strictly mirror the language the user just spoke! If they spoke English (like "Hello", "Hi", "Who are you", "Okay"), reply 100% in natural English. If they spoke Bengali (even if transcribed phonetically in Roman script like "kemon acho", "tumi ke", "ekta kotha bolo"), reply 100% in natural Bengali script (বাংলা). If they spoke Hindi (even in Roman script like "kaise ho", "kya haal hai"), reply 100% in natural Hindi Devanagari script (हिन्दी). Keep reply warm and concise (2-3 short spoken sentences) with NO markdown symbols, bullet points, or emojis.]`;
+        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Strictly mirror the language the user just spoke! If they spoke English (like "Hello", "Hi", "Who are you", "Okay"), reply 100% in natural English. If they spoke Bengali (even if transcribed phonetically in Roman script like "kemon acho", "tumi ke", "ekta kotha bolo"), reply 100% in natural Bengali script (বাংলা). If they spoke Hindi (even in Roman script like "kaise ho", "kya haal hai"), reply 100% in natural Hindi Devanagari script (हिन्दी). Keep reply warm and concise (1-2 short spoken sentences) with NO markdown symbols, bullet points, or emojis.]`;
         sendPromptPipeline(livePrompt, (aiReply) => {
           isWaitingForAiReply = false;
           detectedRecLang = detectLanguageFromText(aiReply);
@@ -2097,7 +2227,7 @@ function setupLiveVoiceEngine() {
             if (statusText) statusText.textContent = "Listening... Go ahead.";
             safeStartMic();
           }
-        }, 550);
+        }, 450);
       }
     };
 
