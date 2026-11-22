@@ -1,0 +1,81 @@
+name: Build Auto-Updating MinDora Release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    env:
+      WEB_URL: "https://ghostbyteprotocol.github.io/mindora-ai/"
+      APP_NAME: "MinDora AI"
+      PKG_ID: "com.mindora.ai.app"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & Java 17
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Create Capacitor Live-Sync Android Project
+        run: |
+          mkdir -p android-wrapper/www
+          echo "<h1>Loading MinDora AI...</h1>" > android-wrapper/www/index.html
+          cd android-wrapper
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "$PKG_ID",
+            "appName": "$APP_NAME",
+            "webDir": "www",
+            "server": {
+              "url": "$WEB_URL",
+              "cleartext": false
+            }
+          }
+          EOF
+          npx cap add android
+
+      - name: Apply App Logo (logo.png) to All Android Icon Densities
+        run: |
+          if [ -f "logo.png" ]; then
+            for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              mkdir -p "android-wrapper/android/app/src/main/res/$dir"
+              cp logo.png "android-wrapper/android/app/src/main/res/$dir/ic_launcher.png"
+              cp logo.png "android-wrapper/android/app/src/main/res/$dir/ic_launcher_round.png"
+              cp logo.png "android-wrapper/android/app/src/main/res/$dir/ic_launcher_foreground.png"
+            done
+          fi
+
+      - name: Add Mic & Audio Permissions for Live Voice
+        run: |
+          MANIFEST="android-wrapper/android/app/src/main/AndroidManifest.xml"
+          sed -i 's/<uses-permission android:name="android.permission.INTERNET" \/>/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO" \/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" \/>/' $MANIFEST
+
+      - name: Build Signed Release APK
+        run: |
+          cd android-wrapper/android/app
+          keytool -genkey -v -keystore mindora-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mindora -storepass mindora123 -keypass mindora123 -dname "CN=MinDora AI, OU=CSE, O=MinDora, L=Purulia, S=WB, C=IN"
+          cd ..
+          ./gradlew assembleRelease
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks app/mindora-release.jks --ks-pass pass:mindora123 --key-pass pass:mindora123 --out ../../MinDora-AI-Release.apk app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Publish Direct Download Release APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-release
+          name: MinDora AI — Official Release APK
+          body: "Signed Release APK with custom app logo and automatic live updates from https://ghostbyteprotocol.github.io/mindora-ai/ (no reinstall needed for future updates)."
+          files: MinDora-AI-Release.apk
