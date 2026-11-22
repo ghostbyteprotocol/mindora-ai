@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Auto-Synced ElevenLabs v3 Voices, Exact Diagnostics & Bug-Free Live Engine)
+// app.js — MinDora AI Core Engine (Custom Premium UI, Voice Preview Play Buttons, Developer Persona & Smart Auto-Lang)
 import { db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -44,10 +44,20 @@ let studioVoiceIndex = 0;
 let activeVoicesList = [...STUDIO_VOICES];
 let voicesSyncedFromApi = false;
 let lastElevenLabsError = "";
+let activePreviewVoiceId = null;
 const voicePreviewCache = {};
 
 const sharedAudioPlayer = new Audio();
 sharedAudioPlayer.preload = "auto";
+
+// Core AI & Developer Identity Prompt
+const MINDORA_IDENTITY_PROMPT = `
+Identity & Creator Knowledge (Use naturally ONLY when asked who you are, for your introduction, or about your creator/developer):
+- You are **MinDora AI**, an intelligent, warm, and fast multilingual personal AI assistant.
+- You were created and developed by **Ayan Karmakar (অয়ন কর্মকার)**, a passionate Computer Science & Engineering (CSE) undergraduate student from Purulia, West Bengal, India (studying B.Tech CSE at Bankura Unnayani Institute of Engineering under MAKAUT).
+- If asked about your developer, speak proudly and warmly about Ayan Karmakar—mentioning that he engineered MinDora AI to make smart, human-like AI accessible across English, Bengali, Hindi, and global languages.
+- Do NOT randomly bring up your developer in normal everyday questions unless the user asks about you or your creator.
+`;
 
 function getActiveElevenLabsKey() {
   const localEl = localStorage.getItem("mindora_el_key");
@@ -62,7 +72,7 @@ function unlockMobileAudio() {
   } catch (e) {}
 }
 
-// Fetch valid voices directly from the user's ElevenLabs account so voice IDs NEVER fail
+// Fetch valid voices directly from ElevenLabs account
 async function syncElevenLabsVoices() {
   if (voicesSyncedFromApi) return;
   const elKey = getActiveElevenLabsKey();
@@ -77,29 +87,112 @@ async function syncElevenLabsVoices() {
       if (Array.isArray(data.voices) && data.voices.length > 0) {
         activeVoicesList = data.voices.slice(0, 8).map((v) => ({
           id: v.voice_id,
+          name: v.name,
+          tag: v.labels?.accent || v.category || "Natural",
           label: `${v.name} (${v.labels?.accent || v.category || "Natural"})`
         }));
         voicesSyncedFromApi = true;
         studioVoiceIndex = studioVoiceIndex % activeVoicesList.length;
 
         const voiceLabelEl = document.getElementById("live-voice-label");
-        if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+        if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].name || activeVoicesList[studioVoiceIndex].label.split(" ")[0];
 
-        const settingsVoiceSelect = document.getElementById("settings-voice-select");
-        if (settingsVoiceSelect) {
-          settingsVoiceSelect.innerHTML = activeVoicesList
-            .map((v, i) => `<option value="${i}">${escapeHtml(v.label)}</option>`)
-            .join("");
-          settingsVoiceSelect.value = String(studioVoiceIndex);
-        }
+        renderCustomVoiceListUI();
       }
     }
   } catch (e) {}
 }
 
+// ==================== CUSTOM PREMIUM DROPDOWN ENHANCER (NO BROWSER POPUPS) ====================
+function upgradeNativeSelectToCustom(selectId, extraClass = "") {
+  const nativeSel = document.getElementById(selectId);
+  if (!nativeSel || nativeSel.dataset.customized === "true") return;
+  nativeSel.dataset.customized = "true";
+  nativeSel.classList.add("hidden");
+
+  const wrapper = document.createElement("div");
+  wrapper.className = `relative inline-block ${extraClass}`;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className =
+    "w-full flex items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-[#101524] hover:bg-[#171f36] border border-slate-700/80 text-xs font-semibold text-white transition shadow-sm";
+
+  const labelSpan = document.createElement("span");
+  labelSpan.className = "truncate";
+  const chevron = document.createElement("i");
+  chevron.className = "fa-solid fa-chevron-down text-[10px] text-cyan-400 transition-transform duration-200";
+
+  trigger.appendChild(labelSpan);
+  trigger.appendChild(chevron);
+
+  const menu = document.createElement("div");
+  menu.className =
+    "custom-select-menu hidden absolute left-0 right-0 mt-1.5 min-w-[185px] rounded-2xl bg-[#0d1220] border border-slate-700/90 shadow-2xl py-1.5 z-50 backdrop-blur-xl max-h-60 overflow-y-auto";
+
+  const rebuildOptions = () => {
+    const opts = Array.from(nativeSel.options);
+    const currentOpt = opts[nativeSel.selectedIndex] || opts[0];
+    labelSpan.textContent = currentOpt ? currentOpt.textContent : "Select";
+
+    menu.innerHTML = "";
+    opts.forEach((opt) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      const isSelected = opt.value === nativeSel.value;
+      item.className = `w-full text-left px-3.5 py-2 text-xs flex items-center justify-between gap-2 transition ${
+        isSelected
+          ? "bg-blue-600/25 text-cyan-300 font-semibold"
+          : "text-slate-300 hover:bg-[#161e33] hover:text-white"
+      }`;
+      item.innerHTML = `
+        <span class="truncate">${escapeHtml(opt.textContent)}</span>
+        ${isSelected ? `<i class="fa-solid fa-check text-[10px] text-cyan-400 shrink-0"></i>` : ""}
+      `;
+      item.onclick = (e) => {
+        e.stopPropagation();
+        nativeSel.value = opt.value;
+        nativeSel.dispatchEvent(new Event("change"));
+        rebuildOptions();
+        menu.classList.add("hidden");
+        chevron.style.transform = "rotate(0deg)";
+      };
+      menu.appendChild(item);
+    });
+  };
+
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    const isHidden = menu.classList.contains("hidden");
+    document.querySelectorAll(".custom-select-menu").forEach((m) => m.classList.add("hidden"));
+    if (isHidden) {
+      rebuildOptions();
+      menu.classList.remove("hidden");
+      chevron.style.transform = "rotate(180deg)";
+    } else {
+      chevron.style.transform = "rotate(0deg)";
+    }
+  };
+
+  rebuildOptions();
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(menu);
+  nativeSel.parentNode.insertBefore(wrapper, nativeSel.nextSibling);
+}
+
 // ==================== INITIALIZATION ====================
 document.addEventListener("DOMContentLoaded", () => {
+  // Enforce English as default language on first load
+  if (!localStorage.getItem("mindora_lang")) {
+    localStorage.setItem("mindora_lang", "en");
+  }
   applyLanguage(getCurrentLang());
+
+  // Upgrade all native browser <select> elements to sleek custom website menus
+  upgradeNativeSelectToCustom("model-select", "min-w-[148px]");
+  upgradeNativeSelectToCustom("imagine-style", "w-full");
+  upgradeNativeSelectToCustom("imagine-ratio", "w-full");
+
   renderLanguageOptions();
   setupSidebarAndGestures();
   setupChatInputAndTools();
@@ -239,6 +332,7 @@ function setupSidebarAndGestures() {
         return;
       }
       closeSidebar();
+      renderCustomVoiceListUI();
       document.getElementById("settings-modal").classList.remove("hidden");
     };
   }
@@ -248,6 +342,7 @@ function setupSidebarAndGestures() {
     const vctx = document.getElementById("vault-context-menu");
     if (ctx && !ctx.contains(e.target)) ctx.classList.add("hidden");
     if (vctx && !vctx.contains(e.target)) vctx.classList.add("hidden");
+    document.querySelectorAll(".custom-select-menu").forEach((m) => m.classList.add("hidden"));
   });
 }
 
@@ -871,17 +966,21 @@ function stopCurrentSpeech() {
     activeAudioBtn.querySelector("span").textContent = "Listen";
     activeAudioBtn = null;
   }
+  if (activePreviewVoiceId) {
+    activePreviewVoiceId = null;
+    renderCustomVoiceListUI();
+  }
 }
 
 async function fetchElevenLabsAudioUrl(text, voiceId) {
   const elKey = getActiveElevenLabsKey();
   if (!elKey) {
-    lastElevenLabsError = "ElevenLabs API Key is empty.";
+    lastElevenLabsError = "ElevenLabs API Key is missing.";
     return null;
   }
 
   await syncElevenLabsVoices();
-  const validVoiceId = activeVoicesList[studioVoiceIndex]?.id || voiceId;
+  const validVoiceId = voiceId || activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
 
   const cleanSpeechText = text
     .replace(/```[\s\S]*?```/g, " Code block is shown on screen. ")
@@ -956,8 +1055,120 @@ async function toggleNeuralListen(text, btnEl) {
     sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else {
     stopCurrentSpeech();
-    alert(`ElevenLabs Error: ${lastElevenLabsError || "Unknown error. Check Settings -> Account."}`);
+    alert(`ElevenLabs Error: ${lastElevenLabsError || "Check Settings -> Account."}`);
   }
+}
+
+// ==================== CUSTOM VOICE LIST WITH INLINE PLAY PREVIEW BUTTONS ====================
+function renderCustomVoiceListUI() {
+  const nativeSelect = document.getElementById("settings-voice-select");
+  if (!nativeSelect || !nativeSelect.parentNode) return;
+  nativeSelect.classList.add("hidden");
+
+  let listContainer = document.getElementById("custom-voice-cards-list");
+  if (!listContainer) {
+    listContainer = document.createElement("div");
+    listContainer.id = "custom-voice-cards-list";
+    listContainer.className = "space-y-2 mt-1";
+    nativeSelect.parentNode.appendChild(listContainer);
+  }
+
+  listContainer.innerHTML = "";
+  activeVoicesList.forEach((voice, idx) => {
+    const isSelected = idx === studioVoiceIndex;
+    const isPlayingThis = activePreviewVoiceId === voice.id;
+    const vName = voice.name || voice.label.split(" ")[0];
+    const vTag = voice.tag || (voice.label.match(/\((.*?)\)/)?.[1] || "Neural");
+
+    const row = document.createElement("div");
+    row.className = `flex items-center justify-between px-3.5 py-2.5 rounded-2xl border transition cursor-pointer ${
+      isSelected
+        ? "bg-emerald-500/15 border-emerald-500/60 text-white"
+        : "bg-[#080b14] border-slate-800 text-slate-300 hover:border-slate-700"
+    }`;
+
+    const left = document.createElement("div");
+    left.className = "flex items-center gap-2.5 min-w-0 flex-1";
+    left.innerHTML = `
+      <span class="w-4 h-4 rounded-full flex items-center justify-center border ${
+        isSelected ? "border-emerald-400 bg-emerald-400 text-slate-950" : "border-slate-600"
+      }">
+        ${isSelected ? `<i class="fa-solid fa-check text-[9px]"></i>` : ""}
+      </span>
+      <div class="truncate">
+        <span class="text-xs font-semibold">${escapeHtml(vName)}</span>
+        <span class="text-[10px] text-slate-400 ml-1.5">${escapeHtml(vTag)}</span>
+      </div>
+    `;
+
+    left.onclick = () => {
+      studioVoiceIndex = idx;
+      localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
+      const voiceLabelEl = document.getElementById("live-voice-label");
+      if (voiceLabelEl) voiceLabelEl.textContent = vName;
+      renderCustomVoiceListUI();
+    };
+
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = `w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition ${
+      isPlayingThis
+        ? "bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-400/30"
+        : "bg-[#131a2c] hover:bg-emerald-500/25 text-emerald-400 border border-slate-700"
+    }`;
+    playBtn.title = `Preview ${vName}`;
+    playBtn.innerHTML = isPlayingThis
+      ? `<i class="fa-solid fa-stop text-xs"></i>`
+      : `<i class="fa-solid fa-play text-xs ml-0.5"></i>`;
+
+    playBtn.onclick = async (e) => {
+      e.stopPropagation();
+      unlockMobileAudio();
+
+      if (activePreviewVoiceId === voice.id) {
+        stopCurrentSpeech();
+        return;
+      }
+
+      stopCurrentSpeech();
+      activePreviewVoiceId = voice.id;
+      playBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-xs"></i>`;
+
+      const sampleText = `Hello! I am ${vName}, your personal AI assistant. How can I help you today?`;
+      let mp3Url = voicePreviewCache[voice.id];
+      if (!mp3Url) {
+        mp3Url = await fetchElevenLabsAudioUrl(sampleText, voice.id);
+        if (mp3Url) voicePreviewCache[voice.id] = mp3Url;
+      }
+
+      if (activePreviewVoiceId !== voice.id) return;
+
+      if (mp3Url) {
+        renderCustomVoiceListUI();
+        sharedAudioPlayer.src = mp3Url;
+        sharedAudioPlayer.onended = () => {
+          activePreviewVoiceId = null;
+          renderCustomVoiceListUI();
+        };
+        sharedAudioPlayer.onerror = () => {
+          activePreviewVoiceId = null;
+          renderCustomVoiceListUI();
+        };
+        sharedAudioPlayer.play().catch(() => {
+          activePreviewVoiceId = null;
+          renderCustomVoiceListUI();
+        });
+      } else {
+        activePreviewVoiceId = null;
+        renderCustomVoiceListUI();
+        alert(`Voice Preview Error: ${lastElevenLabsError || "Check your ElevenLabs API key."}`);
+      }
+    };
+
+    row.appendChild(left);
+    row.appendChild(playBtn);
+    listContainer.appendChild(row);
+  });
 }
 
 // ==================== 7. INPUT BAR, FILE UPLOAD & SEND/STOP ====================
@@ -1210,7 +1421,8 @@ async function generateAIResponseOnly(promptText, filePayload, liveVoiceCallback
     ? ["gemini-flash-lite-latest", "gemini-flash-latest"]
     : modelSpec.chain;
 
-  const systemGuide = `You are MinDora AI, a sharp, friendly, and intelligent personal AI assistant. Respond naturally in the exact language the user writes or speaks in.
+  const systemGuide = `You are MinDora AI, a sharp, friendly, and intelligent personal AI assistant. Respond naturally in the exact language the user writes or speaks in (default to English if ambiguous).
+${MINDORA_IDENTITY_PROMPT}
 ${modelSpec.styleHint ? `Model Profile: ${modelSpec.styleHint}` : ""}
 Mode Behavior: ${modePrompt}
 User Profile: Name is ${currentProfile?.fullName || "User"}, Age ${currentProfile?.age || "N/A"}, Gender ${currentProfile?.gender || "N/A"}.
@@ -1337,10 +1549,13 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
 // ==================== 10. MODALS, SETTINGS & LANGUAGE ====================
 function setupModalsAndSettings() {
   document.getElementById("close-settings-btn").onclick = () => {
+    stopCurrentSpeech();
     document.getElementById("settings-modal").classList.add("hidden");
   };
 
-  // Inject ElevenLabs Key input box inside Settings -> Account tab so you can update it anytime
+  renderCustomVoiceListUI();
+
+  // Inject ElevenLabs Key input box inside Settings -> Account tab
   const accountPanel = document.getElementById("spanel-account");
   if (accountPanel && !document.getElementById("settings-el-key-input")) {
     const elBox = document.createElement("div");
@@ -1380,6 +1595,7 @@ function setupModalsAndSettings() {
       document.querySelectorAll(".settings-panel").forEach((panel) => {
         panel.classList.toggle("hidden", panel.id !== `spanel-${target}`);
       });
+      if (target === "personalization") renderCustomVoiceListUI();
     };
   });
 
@@ -1479,7 +1695,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS V3 AUTO-LANGUAGE ENGINE ====================
+// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SMART AUTO-LANGUAGE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1490,27 +1706,16 @@ function setupLiveVoiceEngine() {
   const stateBadge = document.getElementById("live-state-badge");
   const stateDot = document.getElementById("live-state-dot");
   const interruptBtn = document.getElementById("live-interrupt-btn");
-  const settingsVoiceSelect = document.getElementById("settings-voice-select");
   const speechLangBtn = document.getElementById("live-speech-lang-btn");
   const speechLangLabel = document.getElementById("live-speech-lang-label");
 
-  let settingsPreviewBadge = null;
-  if (settingsVoiceSelect) {
-    settingsVoiceSelect.innerHTML = activeVoicesList.map((v, i) => `<option value="${i}">${v.label}</option>`).join("");
-    if (settingsVoiceSelect.parentNode) {
-      settingsPreviewBadge = document.createElement("p");
-      settingsPreviewBadge.className = "text-[11px] text-cyan-400 mt-1.5 min-h-[16px]";
-      settingsVoiceSelect.parentNode.appendChild(settingsPreviewBadge);
-    }
-  }
-
   const SPEECH_MODES = [
     { id: "auto", label: "Auto" },
+    { id: "en-IN", label: "English" },
     { id: "bn-IN", label: "Bengali" },
-    { id: "hi-IN", label: "Hindi" },
-    { id: "en-IN", label: "English" }
+    { id: "hi-IN", label: "Hindi" }
   ];
-  let speechModeIdx = 0;
+  let speechModeIdx = 0; // Default Auto-Detect starting in English
   let detectedRecLang = "en-IN";
   if (speechLangLabel) speechLangLabel.textContent = SPEECH_MODES[speechModeIdx].label;
 
@@ -1521,7 +1726,9 @@ function setupLiveVoiceEngine() {
   const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
   studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % activeVoicesList.length;
   const voiceLabelEl = document.getElementById("live-voice-label");
-  if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+  if (voiceLabelEl) {
+    voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].name || activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+  }
 
   function detectLanguageFromText(text) {
     if (/[\u0980-\u09FF]/.test(text)) return "bn-IN";
@@ -1536,19 +1743,18 @@ function setupLiveVoiceEngine() {
     sharedAudioPlayer.onerror = null;
   }
 
-  async function playVoicePreview(voiceIdx) {
+  async function playLiveOverlayPreview(voiceIdx) {
     unlockMobileAudio();
     await syncElevenLabsVoices();
     const voiceObj = activeVoicesList[voiceIdx] || activeVoicesList[0];
     const voiceId = voiceObj.id;
-    const voiceName = voiceObj.label.split(" ")[0];
-    const sampleText = `Hello! আমি ${voiceName}, তোর পার্সোনাল এআই বন্ধু। বল, আজ কীভাবে সাহায্য করতে পারি?`;
+    const voiceName = voiceObj.name || voiceObj.label.split(" ")[0];
+    const sampleText = `Hello! I am ${voiceName}. Speak to me in English, Bengali, or Hindi!`;
 
     stopAllLiveAudio();
     try { if (recognition) recognition.abort(); } catch (e) {}
 
-    if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Loading ${voiceName} preview...`;
-    if (isLiveActive && statusText) statusText.textContent = `Loading ${voiceName} voice preview...`;
+    if (statusText) statusText.textContent = `Loading ${voiceName} preview...`;
 
     let mp3Url = voicePreviewCache[voiceId];
     if (!mp3Url) {
@@ -1557,13 +1763,11 @@ function setupLiveVoiceEngine() {
     }
 
     if (mp3Url) {
-      if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Playing: ${voiceObj.label}`;
-      if (isLiveActive && statusText) statusText.textContent = sampleText;
+      if (statusText) statusText.textContent = sampleText;
       setLiveTurnUI("speaking");
 
       sharedAudioPlayer.src = mp3Url;
       sharedAudioPlayer.onended = () => {
-        if (settingsPreviewBadge) settingsPreviewBadge.textContent = "";
         if (isLiveActive && !isLiveMuted) {
           if (statusText) statusText.textContent = "Listening... Go ahead.";
           setTimeout(safeStartMic, 450);
@@ -1571,20 +1775,9 @@ function setupLiveVoiceEngine() {
       };
       sharedAudioPlayer.play().catch(() => {});
     } else {
-      if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Error: ${lastElevenLabsError}`;
-      if (isLiveActive && statusText) statusText.textContent = `Voice error: ${lastElevenLabsError}`;
+      if (statusText) statusText.textContent = `Voice error: ${lastElevenLabsError}`;
       if (isLiveActive && !isLiveMuted) setTimeout(safeStartMic, 1200);
     }
-  }
-
-  if (settingsVoiceSelect) {
-    settingsVoiceSelect.value = String(studioVoiceIndex);
-    settingsVoiceSelect.onchange = () => {
-      studioVoiceIndex = parseInt(settingsVoiceSelect.value, 10) || 0;
-      localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-      if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
-      playVoicePreview(studioVoiceIndex);
-    };
   }
 
   if (speechLangBtn) {
@@ -1660,7 +1853,10 @@ function setupLiveVoiceEngine() {
         if (statusText) statusText.textContent = "Thinking...";
         setLiveTurnUI("thinking");
 
-        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Auto-detect the language the user spoke (Bengali, Hindi, or English — even if transcribed phonetically in Latin letters) and reply naturally in that exact language's native script in 2 short conversational sentences without markdown symbols, bullet points, or emojis.]`;
+        // Smart Language Mirroring Rule:
+        // If user says "Hello" / English -> reply in English.
+        // If user speaks Bengali or Hindi (even if transcribed phonetically in Roman letters) -> reply in Bengali/Hindi script.
+        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Strictly mirror the language the user just spoke! If they spoke English (like "Hello", "Hi", "Who are you", "Okay"), reply 100% in natural English. If they spoke Bengali (even if transcribed phonetically in Roman script like "kemon acho", "tumi ke", "ekta kotha bolo"), reply 100% in natural Bengali script (বাংলা). If they spoke Hindi (even in Roman script like "kaise ho", "kya haal hai"), reply 100% in natural Hindi Devanagari script (हिन्दी). Keep reply warm and concise (2-3 short spoken sentences) with NO markdown symbols, bullet points, or emojis.]`;
         sendPromptPipeline(livePrompt, (aiReply) => {
           isWaitingForAiReply = false;
           detectedRecLang = detectLanguageFromText(aiReply);
@@ -1757,8 +1953,9 @@ function setupLiveVoiceEngine() {
     isLiveActive = true;
     isLiveMuted = false;
     isWaitingForAiReply = false;
+    detectedRecLang = "en-IN"; // Always start Live Talk expecting English first ("Hello" -> English reply)
     if (userCaption) userCaption.textContent = "";
-    if (statusText) statusText.textContent = "Listening... Speak naturally in any language.";
+    if (statusText) statusText.textContent = "Listening... Say Hello or speak in any language.";
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
     document.getElementById("live-overlay").classList.remove("hidden");
     safeStartMic();
@@ -1795,9 +1992,10 @@ function setupLiveVoiceEngine() {
   document.getElementById("live-voice-style-btn").onclick = () => {
     studioVoiceIndex = (studioVoiceIndex + 1) % activeVoicesList.length;
     localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-    if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
-    if (settingsVoiceSelect) settingsVoiceSelect.value = String(studioVoiceIndex);
-    playVoicePreview(studioVoiceIndex);
+    const vName = activeVoicesList[studioVoiceIndex].name || activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+    if (voiceLabelEl) voiceLabelEl.textContent = vName;
+    renderCustomVoiceListUI();
+    playLiveOverlayPreview(studioVoiceIndex);
   };
 
   document.getElementById("close-live-btn").onclick = () => {
