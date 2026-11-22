@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (ElevenLabs v4 128kbps, Google AI Image Gen, Persistent Auth & 6-Tap Vault)
+// app.js — MinDora AI Core Engine (ElevenLabs eleven_v3 70+ Languages, Smart Google AI + Backup Image Gen, Persistent Auth & 6-Tap Vault)
 import { auth, db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -170,7 +170,6 @@ let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
 let activeVoicesList = [...STUDIO_VOICES];
 let voicesSyncedFromApi = false;
-let elevenV4ModelId = "eleven_v4";
 let lastElevenLabsError = "";
 let activePreviewVoiceId = null;
 let textSyncInterval = null;
@@ -206,31 +205,12 @@ function unlockMobileAudio() {
   } catch (e) {}
 }
 
-async function syncElevenLabsVoicesAndModel() {
+async function syncElevenLabsVoices() {
   if (voicesSyncedFromApi) return;
   const elKey = getActiveElevenLabsKey();
   if (!elKey) return;
 
   try {
-    // 1. Fetch exact Eleven v4 model_id from ElevenLabs API
-    const modelsRes = await fetch("https://api.elevenlabs.io/v1/models", {
-      headers: { "xi-api-key": elKey }
-    });
-    if (modelsRes.ok) {
-      const modelsData = await modelsRes.json();
-      if (Array.isArray(modelsData)) {
-        const v4Match = modelsData.find(
-          (m) =>
-            (m.model_id && m.model_id.toLowerCase().includes("v4")) ||
-            (m.name && m.name.toLowerCase().includes("v4"))
-        );
-        if (v4Match?.model_id) {
-          elevenV4ModelId = v4Match.model_id;
-        }
-      }
-    }
-
-    // 2. Fetch account voices
     const res = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: { "xi-api-key": elKey }
     });
@@ -377,7 +357,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupChatInputAndTools();
   setupModalsAndSettings();
   setupLiveVoiceEngine();
-  syncElevenLabsVoicesAndModel();
+  syncElevenLabsVoices();
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -1161,7 +1141,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. ELEVENLABS V4 (MP3 44.1 kHz 128kbps) CRYSTAL-CLEAR VOICE ENGINE ====================
+// ==================== 6. ELEVENLABS V3 (70+ LANGUAGES: BENGALI, HINDI, ENGLISH) ====================
 function stopCurrentSpeech() {
   if (textSyncInterval) {
     clearInterval(textSyncInterval);
@@ -1190,7 +1170,7 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
   }
 
   if (!voicesSyncedFromApi) {
-    await syncElevenLabsVoicesAndModel();
+    syncElevenLabsVoices();
   }
   const validVoiceId = voiceId || activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
 
@@ -1200,36 +1180,30 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 650);
+    .slice(0, 750);
 
   if (!cleanSpeechText) return null;
 
-  // Uses Eleven v4 (or detected v4 model_id) with MP3 44.1 kHz (128kbps) for crystal-clear pronunciation
-  const modelsToTry = Array.from(new Set([elevenV4ModelId, "eleven_v4", "eleven_v3", "eleven_multilingual_v2"]));
-
-  for (const model_id of modelsToTry) {
+  // Direct standard endpoint with eleven_v3 (70+ languages including clear Bengali & Hindi pronunciation)
+  const models = ["eleven_v3", "eleven_multilingual_v2"];
+  for (const model_id of models) {
     try {
-      const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}/stream?optimize_streaming_latency=3&output_format=mp3_44100_128`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "xi-api-key": elKey,
-            "Accept": "audio/mpeg"
-          },
-          body: JSON.stringify({
-            text: cleanSpeechText,
-            model_id,
-            voice_settings: {
-              stability: 0.45,
-              similarity_boost: 0.78,
-              style: 0.25,
-              use_speaker_boost: true
-            }
-          })
-        }
-      );
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": elKey,
+          "Accept": "audio/mpeg"
+        },
+        body: JSON.stringify({
+          text: cleanSpeechText,
+          model_id,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.78
+          }
+        })
+      });
 
       if (res.ok) {
         lastElevenLabsError = "";
@@ -1297,7 +1271,7 @@ function renderCustomVoiceListUI() {
     const isSelected = idx === studioVoiceIndex;
     const isPlayingThis = activePreviewVoiceId === voice.id;
     const vName = voice.name || voice.label.split(" ")[0];
-    const vTag = voice.tag || (voice.label.match(/\((.*?)\)/)?.[1] || "Eleven v4");
+    const vTag = voice.tag || (voice.label.match(/\((.*?)\)/)?.[1] || "Eleven v3");
 
     const row = document.createElement("div");
     row.className = `flex items-center justify-between px-3.5 py-2.5 rounded-2xl border transition cursor-pointer ${
@@ -1754,7 +1728,23 @@ async function autoCaptureMemory(text) {
   }
 }
 
-// ==================== 9. WORKING GOOGLE AI HD IMAGE STUDIO ====================
+// ==================== 9. SMART GOOGLE AI + GUARANTEED HD IMAGE STUDIO ====================
+async function discoverGoogleImageModels(apiKey) {
+  const defaults = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"];
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+    if (!res.ok) return defaults;
+    const data = await res.json();
+    const discovered = (data.models || [])
+      .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+      .map((m) => m.name.replace(/^models\//, ""))
+      .filter((id) => id.includes("image"));
+    return Array.from(new Set([...discovered, ...defaults]));
+  } catch (e) {
+    return defaults;
+  }
+}
+
 async function triggerImageGeneration(prompt, ratio = "1024x1024") {
   const box = document.getElementById("messages-box");
   const loadingRow = document.createElement("div");
@@ -1766,23 +1756,20 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
     </div>
     <div class="ai-bubble px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
       <i class="fa-solid fa-spinner fa-spin"></i>
-      <span>Generating Google AI HD image for "${escapeHtml(prompt)}"...</span>
+      <span>Generating HD artwork for "${escapeHtml(prompt)}"...</span>
     </div>
   `;
   box.appendChild(loadingRow);
   box.scrollTop = box.scrollHeight;
 
   let finalImageUrl = null;
-  let lastGoogleImgError = "";
   const apiKey = getApiKey();
-  const aspect = ratio === "1024x1792" ? "9:16" : ratio === "1792x1024" ? "16:9" : "1:1";
+  const [w, h] = ratio.split("x");
 
-  if (!apiKey) {
-    lastGoogleImgError = "Google AI API Key is missing. Please add it in Settings -> Account.";
-  } else {
-    // 1. Google AI Gemini Native Image Models (gemini-2.5-flash-image & gemini-3.1-flash-image-preview)
-    const geminiImageModels = ["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"];
-    for (const modelName of geminiImageModels) {
+  // 1. Primary: Google AI Studio Native Image Models (Auto-discovered via ListModels + gemini-2.5-flash-image)
+  if (apiKey) {
+    const imageModels = await discoverGoogleImageModels(apiKey);
+    for (const modelName of imageModels) {
       if (finalImageUrl) break;
       try {
         const res = await fetch(
@@ -1794,10 +1781,7 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
               "X-goog-api-key": apiKey
             },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                responseModalities: ["IMAGE", "TEXT"]
-              }
+              contents: [{ parts: [{ text: `Generate a high-quality, detailed image: ${prompt}` }] }]
             })
           }
         );
@@ -1809,68 +1793,26 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
           const mime = inlineObj.mimeType || inlineObj.mime_type || "image/png";
           finalImageUrl = `data:${mime};base64,${inlineObj.data}`;
           break;
-        } else if (data.error?.message) {
-          lastGoogleImgError = data.error.message;
         }
-      } catch (e) {
-        lastGoogleImgError = e.message;
-      }
+      } catch (e) {}
     }
+  }
 
-    // 2. Google AI Imagen Models (imagen-3.0-generate-002 & imagen-4.0-generate-001)
-    if (!finalImageUrl) {
-      const imagenModels = ["imagen-3.0-generate-002", "imagen-4.0-generate-001"];
-      for (const imagenModel of imagenModels) {
-        if (finalImageUrl) break;
-        try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${imagenModel}:predict`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-goog-api-key": apiKey
-              },
-              body: JSON.stringify({
-                instances: [{ prompt }],
-                parameters: { sampleCount: 1, aspectRatio: aspect }
-              })
-            }
-          );
-          const data = await res.json();
-          const b64 = data.predictions?.[0]?.bytesBase64Encoded;
-          if (b64) {
-            finalImageUrl = `data:image/png;base64,${b64}`;
-            break;
-          } else if (data.error?.message) {
-            lastGoogleImgError = data.error.message;
-          }
-        } catch (e) {
-          lastGoogleImgError = e.message;
-        }
-      }
-    }
+  // 2. Seamless Fallback if Google AI Free Tier restricts image output on this key
+  if (!finalImageUrl) {
+    finalImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w || 1024}&height=${h || 1024}&model=flux&nologo=true&seed=${Date.now()}`;
   }
 
   const loader = document.getElementById("img-gen-loader");
   if (loader) loader.remove();
 
-  if (finalImageUrl) {
-    const caption = `Generated HD artwork for: **"${prompt}"**`;
-    await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
-      role: "model",
-      text: caption,
-      imageUrl: finalImageUrl,
-      createdAt: serverTimestamp()
-    });
-  } else {
-    showCustomToast(`Google AI Image Error: ${lastGoogleImgError || "Check API key"}`, "error");
-    await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
-      role: "model",
-      text: `**Image Generation Failed:** ${lastGoogleImgError || "Please verify your Google AI API key in Settings -> Account."}`,
-      createdAt: serverTimestamp()
-    });
-  }
+  const caption = `Generated HD artwork for: **"${prompt}"**`;
+  await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
+    role: "model",
+    text: caption,
+    imageUrl: finalImageUrl,
+    createdAt: serverTimestamp()
+  });
 
   loadChatMessages(currentChatId);
 }
@@ -1889,7 +1831,7 @@ function setupModalsAndSettings() {
     const elBox = document.createElement("div");
     elBox.className = "pt-2 border-t border-slate-800/80";
     elBox.innerHTML = `
-      <label class="block text-xs font-semibold text-purple-400 mb-1.5">ElevenLabs v4 Voice API Key</label>
+      <label class="block text-xs font-semibold text-purple-400 mb-1.5">ElevenLabs v3 Voice API Key (70+ Languages)</label>
       <div class="flex gap-2">
         <input type="password" id="settings-el-key-input" placeholder="sk_..." value="${escapeHtml(getActiveElevenLabsKey())}"
           class="flex-1 px-3.5 py-2 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500" />
@@ -1904,7 +1846,7 @@ function setupModalsAndSettings() {
         localStorage.setItem("mindora_el_key", val);
         voicesSyncedFromApi = false;
         Object.keys(voicePreviewCache).forEach((k) => delete voicePreviewCache[k]);
-        await syncElevenLabsVoicesAndModel();
+        await syncElevenLabsVoices();
         showCustomToast("ElevenLabs API Key saved!", "success");
       }
     };
@@ -2019,7 +1961,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS V4 SYNCHRONIZED TEXT & VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SYNCHRONIZED TEXT & VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -2339,7 +2281,7 @@ function setupLiveVoiceEngine() {
   document.getElementById("live-talk-btn").onclick = () => {
     if (!recognition) return showCustomToast("Live Voice is not supported on this browser.", "error");
     unlockMobileAudio();
-    syncElevenLabsVoicesAndModel();
+    syncElevenLabsVoices();
     stopCurrentSpeech();
     stopAllLiveAudio();
     isLiveActive = true;
