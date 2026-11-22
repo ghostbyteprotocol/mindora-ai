@@ -1,6 +1,10 @@
-name: MinDora AI Release APK Builder
+name: Auto Build MinDora Release APK
 
 on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'README.md'
   workflow_dispatch:
 
 permissions:
@@ -31,7 +35,7 @@ jobs:
       - name: Initialize Capacitor Android wrapper
         run: |
           mkdir -p mobile-app/www
-          echo "<!doctype html><html><body><p>Opening MinDora AI...</p></body></html>" > mobile-app/www/index.html
+          echo "<!doctype html><html><body style='background:#080b14;color:#fff'><h3>Loading MinDora AI...</h3></body></html>" > mobile-app/www/index.html
           cd mobile-app
           npm init -y
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
@@ -48,10 +52,11 @@ jobs:
           EOF
           npx cap add android
 
-      - name: Generate crisp PNG app icons from logo.png
+      - name: Apply visible logo.png as Android Launcher Icon
         run: |
           python3 -c '
-          import os, shutil, struct, zlib
+          import os, shutil
+          from PIL import Image, ImageEnhance
 
           source_logo = "logo.png"
           res_root = "mobile-app/android/app/src/main/res"
@@ -63,31 +68,19 @@ jobs:
               "mipmap-xxxhdpi": 192,
           }
 
-          def fallback_png(width, height, color=(37, 99, 235, 255)):
-              def make_chunk(chunk_type, chunk_data):
-                  crc = zlib.crc32(chunk_type + chunk_data) & 0xffffffff
-                  return struct.pack("!I", len(chunk_data)) + chunk_type + chunk_data + struct.pack("!I", crc)
-              ihdr = struct.pack("!IIBBBBB", width, height, 8, 6, 0, 0, 0)
-              scanline = bytes(color) * width
-              raw_rows = b"".join(b"\x00" + scanline for _ in range(height))
-              compressed = zlib.compress(raw_rows, level=9)
-              return b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", ihdr) + make_chunk(b"IDAT", compressed) + make_chunk(b"IEND", b"")
-
+          # Remove adaptive icon XMLs so Android strictly renders our PNG launcher icons
           for entry in os.listdir(res_root):
               full_path = os.path.join(res_root, entry)
               if entry.startswith("mipmap-anydpi") and os.path.isdir(full_path):
                   shutil.rmtree(full_path, ignore_errors=True)
 
-          pil_img = None
-          try:
-              from PIL import Image
-              if os.path.exists(source_logo):
-                  raw_img = Image.open(source_logo).convert("RGBA")
-                  # Put on a clean deep navy-blue card so logo is always clearly visible
-                  bg = Image.new("RGBA", raw_img.size, (13, 18, 32, 255))
-                  pil_img = Image.alpha_composite(bg, raw_img)
-          except Exception:
-              pil_img = None
+          img = Image.open(source_logo).convert("RGBA")
+          bbox = img.getbbox()
+          if bbox:
+              img = img.crop(bbox)
+
+          # Boost brightness slightly and place centered on a vibrant indigo-cyan card
+          img = ImageEnhance.Brightness(img).enhance(1.25)
 
           for folder, px in mipmap_sizes.items():
               target_folder = os.path.join(res_root, folder)
@@ -96,16 +89,18 @@ jobs:
                   xml_path = os.path.join(target_folder, xml_name)
                   if os.path.exists(xml_path):
                       os.remove(xml_path)
+
+              canvas = Image.new("RGBA", (px, px), (18, 28, 56, 255))
+              pad = max(4, int(px * 0.12))
+              inner_size = px - (pad * 2)
+              resized_logo = img.resize((inner_size, inner_size), Image.Resampling.LANCZOS)
+              canvas.paste(resized_logo, (pad, pad), resized_logo)
+
               for icon_file in ["ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"]:
-                  dest_file = os.path.join(target_folder, icon_file)
-                  if pil_img is not None:
-                      pil_img.resize((px, px)).save(dest_file, format="PNG")
-                  else:
-                      with open(dest_file, "wb") as out:
-                          out.write(fallback_png(px, px))
+                  canvas.save(os.path.join(target_folder, icon_file), format="PNG")
           '
 
-      - name: Configure microphone and audio permissions
+      - name: Configure Manifest Icons & Mic Permissions
         run: |
           MANIFEST_FILE="mobile-app/android/app/src/main/AndroidManifest.xml"
           sed -i 's/<uses-permission android:name="android.permission.INTERNET" \/>/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO" \/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" \/>/' "$MANIFEST_FILE"
@@ -119,11 +114,11 @@ jobs:
           APKSIGNER_BIN=$(find "$ANDROID_HOME/build-tools" -name "apksigner" | sort -V | tail -n 1)
           "$APKSIGNER_BIN" sign --ks app/release-key.jks --ks-pass pass:mindora123 --key-pass pass:mindora123 --out ../../MinDora-AI-Release.apk app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: Upload APK to GitHub Releases
+      - name: Auto-Publish APK to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.0.0-release --yes || true
-          gh release create v1.0.0-release MinDora-AI-Release.apk \
-            --title "MinDora AI — Official Release APK" \
-            --notes "Auto-updating Android release APK connected to https://ghostbyteprotocol.github.io/mindora-ai/."
+          gh release delete latest-apk --yes || true
+          gh release create latest-apk MinDora-AI-Release.apk \
+            --title "MinDora AI — Latest Release APK" \
+            --notes "Auto-built signed Release APK with app logo and live updates from https://ghostbyteprotocol.github.io/mindora-ai/."
