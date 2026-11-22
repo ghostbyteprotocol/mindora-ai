@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (ElevenLabs v3 Multilingual Voice, Auto Language Detect & Bug-Free Live Engine)
+// app.js — MinDora AI Core Engine (Auto-Synced ElevenLabs v3 Voices, Exact Diagnostics & Bug-Free Live Engine)
 import { db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -41,23 +41,59 @@ let isLiveActive = false;
 let isLiveMuted = false;
 let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
+let activeVoicesList = [...STUDIO_VOICES];
+let voicesSyncedFromApi = false;
+let lastElevenLabsError = "";
 const voicePreviewCache = {};
 
 const sharedAudioPlayer = new Audio();
 sharedAudioPlayer.preload = "auto";
 
-const VOICE_PREVIEW_SAMPLES = {
-  "9BWtsMINqrJLrRacOk9x": "Hello! আমি আরিয়া, তোর পার্সোনাল এআই বন্ধু। বল, আজ কীভাবে সাহায্য করতে পারি?",
-  "CwhRBWXzGAHq8TQ4Fs17": "Hi! আমি রজার, একদম পরিষ্কার আর ন্যাচারাল গলায় কথা বলি।",
-  "EXAVITQu4vr4xnSDxMaL": "Hey there! আমি সারা। যেকোনো ভাষায় কথা বল, আমি বুঝতে পারব।",
-  "IKne3meq5aSn9XLyUdCD": "Hello! আমি চার্লি, একদম বন্ধুর মতো আড্ডা দেওয়ার জন্য রেডি।",
-  "JBFqnCBsd6RMkjVDRZzb": "Greetings! আমি জর্জ, গভীর আর স্পষ্ট গলায় কথা বলি।"
-};
+function getActiveElevenLabsKey() {
+  const localEl = localStorage.getItem("mindora_el_key");
+  if (localEl && localEl.trim().length > 10) return localEl.trim();
+  return getElevenLabsKey();
+}
 
 function unlockMobileAudio() {
   try {
     sharedAudioPlayer.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
     sharedAudioPlayer.play().then(() => sharedAudioPlayer.pause()).catch(() => {});
+  } catch (e) {}
+}
+
+// Fetch valid voices directly from the user's ElevenLabs account so voice IDs NEVER fail
+async function syncElevenLabsVoices() {
+  if (voicesSyncedFromApi) return;
+  const elKey = getActiveElevenLabsKey();
+  if (!elKey) return;
+
+  try {
+    const res = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: { "xi-api-key": elKey }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.voices) && data.voices.length > 0) {
+        activeVoicesList = data.voices.slice(0, 8).map((v) => ({
+          id: v.voice_id,
+          label: `${v.name} (${v.labels?.accent || v.category || "Natural"})`
+        }));
+        voicesSyncedFromApi = true;
+        studioVoiceIndex = studioVoiceIndex % activeVoicesList.length;
+
+        const voiceLabelEl = document.getElementById("live-voice-label");
+        if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+
+        const settingsVoiceSelect = document.getElementById("settings-voice-select");
+        if (settingsVoiceSelect) {
+          settingsVoiceSelect.innerHTML = activeVoicesList
+            .map((v, i) => `<option value="${i}">${escapeHtml(v.label)}</option>`)
+            .join("");
+          settingsVoiceSelect.value = String(studioVoiceIndex);
+        }
+      }
+    }
   } catch (e) {}
 }
 
@@ -69,6 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupChatInputAndTools();
   setupModalsAndSettings();
   setupLiveVoiceEngine();
+  syncElevenLabsVoices();
 
   initAuth(async (user, profile) => {
     currentUser = user;
@@ -837,8 +874,14 @@ function stopCurrentSpeech() {
 }
 
 async function fetchElevenLabsAudioUrl(text, voiceId) {
-  const elKey = getElevenLabsKey();
-  if (!elKey) return null;
+  const elKey = getActiveElevenLabsKey();
+  if (!elKey) {
+    lastElevenLabsError = "ElevenLabs API Key is empty.";
+    return null;
+  }
+
+  await syncElevenLabsVoices();
+  const validVoiceId = activeVoicesList[studioVoiceIndex]?.id || voiceId;
 
   const cleanSpeechText = text
     .replace(/```[\s\S]*?```/g, " Code block is shown on screen. ")
@@ -850,11 +893,10 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
 
   if (!cleanSpeechText) return null;
 
-  // Use ElevenLabs v3 first (70+ languages including Bengali & Hindi), then fallback
   const models = ["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5"];
   for (const model_id of models) {
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -865,17 +907,27 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
           text: cleanSpeechText,
           model_id,
           voice_settings: {
-            stability: 0.5, // Required valid discrete value (0.0, 0.5, 1.0) for eleven_v3
+            stability: 0.5,
             similarity_boost: 0.78
           }
         })
       });
 
       if (res.ok) {
+        lastElevenLabsError = "";
         const audioBlob = await res.blob();
         return URL.createObjectURL(audioBlob);
+      } else {
+        try {
+          const errJson = await res.json();
+          lastElevenLabsError = errJson?.detail?.message || JSON.stringify(errJson?.detail || errJson);
+        } catch (parseErr) {
+          lastElevenLabsError = `HTTP ${res.status}`;
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      lastElevenLabsError = e.message;
+    }
   }
   return null;
 }
@@ -891,7 +943,7 @@ async function toggleNeuralListen(text, btnEl) {
   btnEl.classList.add("speaking-active");
   btnEl.querySelector("span").textContent = "Loading...";
 
-  const voiceId = STUDIO_VOICES[studioVoiceIndex]?.id || "9BWtsMINqrJLrRacOk9x";
+  const voiceId = activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
   const mp3Url = await fetchElevenLabsAudioUrl(text, voiceId);
 
   if (activeAudioBtn !== btnEl) return;
@@ -904,7 +956,7 @@ async function toggleNeuralListen(text, btnEl) {
     sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else {
     stopCurrentSpeech();
-    alert("ElevenLabs API error. Check your ElevenLabs key or quota.");
+    alert(`ElevenLabs Error: ${lastElevenLabsError || "Unknown error. Check Settings -> Account."}`);
   }
 }
 
@@ -1288,6 +1340,35 @@ function setupModalsAndSettings() {
     document.getElementById("settings-modal").classList.add("hidden");
   };
 
+  // Inject ElevenLabs Key input box inside Settings -> Account tab so you can update it anytime
+  const accountPanel = document.getElementById("spanel-account");
+  if (accountPanel && !document.getElementById("settings-el-key-input")) {
+    const elBox = document.createElement("div");
+    elBox.className = "pt-2 border-t border-slate-800/80";
+    elBox.innerHTML = `
+      <label class="block text-xs font-semibold text-purple-400 mb-1.5">ElevenLabs Voice API Key (Human Voice)</label>
+      <div class="flex gap-2">
+        <input type="password" id="settings-el-key-input" placeholder="sk_..." value="${escapeHtml(getActiveElevenLabsKey())}"
+          class="flex-1 px-3.5 py-2 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500" />
+        <button type="button" id="save-el-key-btn" class="px-3.5 py-2 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition">Save</button>
+      </div>
+    `;
+    accountPanel.appendChild(elBox);
+
+    document.getElementById("save-el-key-btn").onclick = async () => {
+      const val = document.getElementById("settings-el-key-input").value.trim();
+      if (val) {
+        localStorage.setItem("mindora_el_key", val);
+        voicesSyncedFromApi = false;
+        Object.keys(voicePreviewCache).forEach((k) => delete voicePreviewCache[k]);
+        await syncElevenLabsVoices();
+        const btn = document.getElementById("save-el-key-btn");
+        btn.textContent = "Saved!";
+        setTimeout(() => (btn.textContent = "Save"), 1400);
+      }
+    };
+  }
+
   document.querySelectorAll(".settings-tab").forEach((tab) => {
     tab.onclick = () => {
       const target = tab.dataset.stab;
@@ -1415,7 +1496,7 @@ function setupLiveVoiceEngine() {
 
   let settingsPreviewBadge = null;
   if (settingsVoiceSelect) {
-    settingsVoiceSelect.innerHTML = STUDIO_VOICES.map((v, i) => `<option value="${i}">${v.label}</option>`).join("");
+    settingsVoiceSelect.innerHTML = activeVoicesList.map((v, i) => `<option value="${i}">${v.label}</option>`).join("");
     if (settingsVoiceSelect.parentNode) {
       settingsPreviewBadge = document.createElement("p");
       settingsPreviewBadge.className = "text-[11px] text-cyan-400 mt-1.5 min-h-[16px]";
@@ -1423,14 +1504,13 @@ function setupLiveVoiceEngine() {
     }
   }
 
-  // Default: Auto-Detect (adapts automatically to Bengali, Hindi, or English)
   const SPEECH_MODES = [
     { id: "auto", label: "Auto" },
     { id: "bn-IN", label: "Bengali" },
     { id: "hi-IN", label: "Hindi" },
     { id: "en-IN", label: "English" }
   ];
-  let speechModeIdx = 0; // Always start in Auto-Detect mode
+  let speechModeIdx = 0;
   let detectedRecLang = "en-IN";
   if (speechLangLabel) speechLangLabel.textContent = SPEECH_MODES[speechModeIdx].label;
 
@@ -1439,9 +1519,9 @@ function setupLiveVoiceEngine() {
   let isMicStarting = false;
 
   const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
-  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % STUDIO_VOICES.length;
+  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % activeVoicesList.length;
   const voiceLabelEl = document.getElementById("live-voice-label");
-  if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+  if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
 
   function detectLanguageFromText(text) {
     if (/[\u0980-\u09FF]/.test(text)) return "bn-IN";
@@ -1458,10 +1538,11 @@ function setupLiveVoiceEngine() {
 
   async function playVoicePreview(voiceIdx) {
     unlockMobileAudio();
-    const voiceObj = STUDIO_VOICES[voiceIdx] || STUDIO_VOICES[0];
+    await syncElevenLabsVoices();
+    const voiceObj = activeVoicesList[voiceIdx] || activeVoicesList[0];
     const voiceId = voiceObj.id;
     const voiceName = voiceObj.label.split(" ")[0];
-    const sampleText = VOICE_PREVIEW_SAMPLES[voiceId] || `Hello! I am ${voiceName}.`;
+    const sampleText = `Hello! আমি ${voiceName}, তোর পার্সোনাল এআই বন্ধু। বল, আজ কীভাবে সাহায্য করতে পারি?`;
 
     stopAllLiveAudio();
     try { if (recognition) recognition.abort(); } catch (e) {}
@@ -1490,8 +1571,9 @@ function setupLiveVoiceEngine() {
       };
       sharedAudioPlayer.play().catch(() => {});
     } else {
-      if (settingsPreviewBadge) settingsPreviewBadge.textContent = "Check ElevenLabs API Key or quota.";
-      if (isLiveActive && !isLiveMuted) safeStartMic();
+      if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Error: ${lastElevenLabsError}`;
+      if (isLiveActive && statusText) statusText.textContent = `Voice error: ${lastElevenLabsError}`;
+      if (isLiveActive && !isLiveMuted) setTimeout(safeStartMic, 1200);
     }
   }
 
@@ -1500,7 +1582,7 @@ function setupLiveVoiceEngine() {
     settingsVoiceSelect.onchange = () => {
       studioVoiceIndex = parseInt(settingsVoiceSelect.value, 10) || 0;
       localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-      if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+      if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
       playVoicePreview(studioVoiceIndex);
     };
   }
@@ -1581,7 +1663,6 @@ function setupLiveVoiceEngine() {
         const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Auto-detect the language the user spoke (Bengali, Hindi, or English — even if transcribed phonetically in Latin letters) and reply naturally in that exact language's native script in 2 short conversational sentences without markdown symbols, bullet points, or emojis.]`;
         sendPromptPipeline(livePrompt, (aiReply) => {
           isWaitingForAiReply = false;
-          // Auto-update recognition language for next turn based on AI's matched language
           detectedRecLang = detectLanguageFromText(aiReply);
           speakInLiveMode(aiReply);
         });
@@ -1631,7 +1712,7 @@ function setupLiveVoiceEngine() {
     try { if (recognition) recognition.abort(); } catch (e) {}
     setLiveTurnUI("speaking");
 
-    const voiceId = STUDIO_VOICES[studioVoiceIndex]?.id || "9BWtsMINqrJLrRacOk9x";
+    const voiceId = activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
     const mp3Url = await fetchElevenLabsAudioUrl(cleanDisplay, voiceId);
 
     if (!isLiveActive || !isLiveSpeakerOn || !isAiSpeakingTurn) {
@@ -1645,7 +1726,10 @@ function setupLiveVoiceEngine() {
       sharedAudioPlayer.onerror = finishSpeakingTurn;
       sharedAudioPlayer.play().catch(finishSpeakingTurn);
     } else {
-      finishSpeakingTurn();
+      if (statusText && lastElevenLabsError) {
+        statusText.textContent = `Voice error: ${lastElevenLabsError}`;
+      }
+      setTimeout(finishSpeakingTurn, 1200);
     }
   }
 
@@ -1667,6 +1751,7 @@ function setupLiveVoiceEngine() {
   document.getElementById("live-talk-btn").onclick = () => {
     if (!recognition) return alert("Live Voice is not supported on this browser.");
     unlockMobileAudio();
+    syncElevenLabsVoices();
     stopCurrentSpeech();
     stopAllLiveAudio();
     isLiveActive = true;
@@ -1708,9 +1793,9 @@ function setupLiveVoiceEngine() {
   };
 
   document.getElementById("live-voice-style-btn").onclick = () => {
-    studioVoiceIndex = (studioVoiceIndex + 1) % STUDIO_VOICES.length;
+    studioVoiceIndex = (studioVoiceIndex + 1) % activeVoicesList.length;
     localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-    if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+    if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].label.split(" ")[0];
     if (settingsVoiceSelect) settingsVoiceSelect.value = String(studioVoiceIndex);
     playVoicePreview(studioVoiceIndex);
   };
