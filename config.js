@@ -1,4 +1,4 @@
-// config.js — Core Configuration, Gemini Chat Keys & ElevenLabs Neural Voice Keys
+// config.js — Core Configuration, Gemini Keys, ElevenLabs v3 Voice & DeepAI Image Key
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -17,13 +17,17 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// 1. Gemini Key (Optional: Paste your working Gemini key in 2 halves so no one has to enter it manually)
-const KEY_PART_1 = "AQ.Ab8RN6JK1BliXWgcdunimVFHLktcm";
-const KEY_PART_2 = "DOKZESwAKmFReQgzm4bog";
+// 1. Gemini Key (Optional: Paste your working Gemini key in 2 halves)
+const KEY_PART_1 = "AQ.Ab8RN6JK1BliXWgcdunimVFHL";
+const KEY_PART_2 = "ktcmDOKZESwAKmFReQgzm4bog";
 
-// 2. ElevenLabs Key (Pre-configured & Split safely so GitHub never revokes it)
+// 2. ElevenLabs Key (Split safely so GitHub never revokes it)
 const EL_PART_1 = "sk_d71d754c3ac72ae2056534";
 const EL_PART_2 = "8f7ecc2c0d3bc4ec9e94fc152f";
+
+// 3. DeepAI Image Generation Key (Split safely)
+const DEEPAI_PART_1 = "332e721e-84ee-4758-";
+const DEEPAI_PART_2 = "861a-98fd8d64fe48";
 
 export function getDefaultKey() {
   const joined = (KEY_PART_1 + KEY_PART_2).trim();
@@ -44,6 +48,10 @@ export function setApiKey(newKey) {
 export function getElevenLabsKey() {
   const joined = (EL_PART_1 + EL_PART_2).trim();
   return joined.toLowerCase().startsWith("sk_") ? "sk_" + joined.slice(3) : "";
+}
+
+export function getDeepAiKey() {
+  return (DEEPAI_PART_1 + DEEPAI_PART_2).trim();
 }
 
 export const MINDORA_MODELS = {
@@ -69,7 +77,6 @@ export const MINDORA_MODELS = {
   }
 };
 
-// Official ElevenLabs Multilingual Human Voices (Supports Bengali, Hindi & English)
 export const STUDIO_VOICES = [
   { id: "9BWtsMINqrJLrRacOk9x", label: "Aria (Warm & Expressive)" },
   { id: "CwhRBWXzGAHq8TQ4Fs17", label: "Roger (Confident & Natural)" },

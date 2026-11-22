@@ -1,5 +1,5 @@
-// app.js — MinDora AI Core Engine (Persistent Auth, Fast ElevenLabs v4 Streaming Voice, Working AI Image Gen & 6-Tap Vault)
-import { auth, db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
+// app.js — MinDora AI Core Engine (Fast ElevenLabs v3 Voice, DeepAI Image Gen, Persistent Auth & 6-Tap Vault)
+import { auth, db, getApiKey, getElevenLabsKey, getDeepAiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
 import {
@@ -23,7 +23,6 @@ import {
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Enforce persistent local login across app/browser restarts
 setPersistence(auth, browserLocalPersistence).catch(() => {});
 
 // ==================== CUSTOM WEBSITE DIALOGS & TOASTS ====================
@@ -199,6 +198,12 @@ function getActiveElevenLabsKey() {
   return getElevenLabsKey();
 }
 
+function getActiveDeepAiKey() {
+  const localDeep = localStorage.getItem("mindora_deepai_key");
+  if (localDeep && localDeep.trim().length > 10) return localDeep.trim();
+  return getDeepAiKey();
+}
+
 function unlockMobileAudio() {
   try {
     sharedAudioPlayer.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
@@ -332,7 +337,6 @@ async function handleAuthenticatedUser(user, profile = null) {
     } catch (e) {}
   }
 
-  // Hide auth overlay immediately once Firebase confirms existing session
   const authScreen = document.getElementById("auth-screen") || document.getElementById("auth-modal");
   if (authScreen) authScreen.classList.add("hidden");
 
@@ -361,7 +365,6 @@ document.addEventListener("DOMContentLoaded", () => {
   setupLiveVoiceEngine();
   syncElevenLabsVoices();
 
-  // Direct persistent listener so returning users never get prompted to login again
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       await handleAuthenticatedUser(user, null);
@@ -428,7 +431,6 @@ function setupSidebarAndGestures() {
   if (closeBtn) closeBtn.onclick = closeSidebar;
   if (backdrop) backdrop.onclick = closeSidebar;
 
-  // Secret 6-Tap on Top-Left Sidebar Logo -> Prompts Security PIN -> Opens Hidden Vault
   if (sidebar) {
     const sidebarLogoImg = sidebar.querySelector('img[src="logo.png"]');
     const secretLogoTarget = sidebarLogoImg ? sidebarLogoImg.parentElement : null;
@@ -1145,7 +1147,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. ELEVENLABS V4 / MULTILINGUAL STREAMING VOICE ENGINE ====================
+// ==================== 6. FAST ELEVENLABS V3 STREAMING VOICE ENGINE ====================
 function stopCurrentSpeech() {
   if (textSyncInterval) {
     clearInterval(textSyncInterval);
@@ -1173,7 +1175,6 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
     return null;
   }
 
-  // Run voice sync in background without blocking TTS request
   if (!voicesSyncedFromApi) {
     syncElevenLabsVoices();
   }
@@ -1185,16 +1186,16 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 600);
+    .slice(0, 550);
 
   if (!cleanSpeechText) return null;
 
-  // Try eleven_v4 first as requested, then ultra-fast multilingual fallback so voice never fails
-  const models = ["eleven_v4", "eleven_v3", "eleven_multilingual_v2"];
+  // Directly call ElevenLabs v3 first (supports Bengali, Hindi & English natively with zero wasted delay)
+  const models = ["eleven_v3", "eleven_multilingual_v2"];
   for (const model_id of models) {
     try {
       const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}/stream?optimize_streaming_latency=4`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}/stream?optimize_streaming_latency=4&output_format=mp3_22050_32`,
         {
           method: "POST",
           headers: {
@@ -1736,7 +1737,7 @@ async function autoCaptureMemory(text) {
   }
 }
 
-// ==================== 9. WORKING HD IMAGE STUDIO (GEMINI NATIVE + FALLBACK) ====================
+// ==================== 9. WORKING HD IMAGE STUDIO (DEEPAI PRIMARY + BACKUP) ====================
 async function triggerImageGeneration(prompt, ratio = "1024x1024") {
   const box = document.getElementById("messages-box");
   const loadingRow = document.createElement("div");
@@ -1755,10 +1756,35 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
   box.scrollTop = box.scrollHeight;
 
   let finalImageUrl = null;
-  const apiKey = getApiKey();
+  const deepAiKey = getActiveDeepAiKey();
+  const [w, h] = ratio.split("x");
 
-  // 1. Primary: Gemini Native Image Generation (returns instant crisp Base64 PNG)
-  if (apiKey) {
+  // 1. Primary: DeepAI Text-to-Image API
+  if (deepAiKey) {
+    try {
+      const formData = new FormData();
+      formData.append("text", prompt);
+      formData.append("grid_size", "1");
+      formData.append("width", w || "1024");
+      formData.append("height", h || "1024");
+
+      const res = await fetch("https://api.deepai.org/api/text2img", {
+        method: "POST",
+        headers: {
+          "api-key": deepAiKey
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.output_url) {
+        finalImageUrl = data.output_url;
+      }
+    } catch (e) {}
+  }
+
+  // 2. Secondary Backup: Gemini Native Image Generation
+  const apiKey = getApiKey();
+  if (!finalImageUrl && apiKey) {
     try {
       const res = await fetch(
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent",
@@ -1783,35 +1809,8 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
     } catch (e) {}
   }
 
-  // 2. Secondary: Imagen 3 Fast API
-  if (!finalImageUrl && apiKey) {
-    try {
-      const aspect = ratio === "1024x1792" ? "9:16" : ratio === "1792x1024" ? "16:9" : "1:1";
-      const res = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-goog-api-key": apiKey
-          },
-          body: JSON.stringify({
-            instances: [{ prompt }],
-            parameters: { sampleCount: 1, aspectRatio: aspect }
-          })
-        }
-      );
-      const data = await res.json();
-      const b64 = data.predictions?.[0]?.bytesBase64Encoded;
-      if (b64) {
-        finalImageUrl = `data:image/png;base64,${b64}`;
-      }
-    } catch (e) {}
-  }
-
-  // 3. Fallback: Direct Flux Image Engine
+  // 3. Final Fallback: Flux Image Engine
   if (!finalImageUrl) {
-    const [w, h] = ratio.split("x");
     finalImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&model=flux&nologo=true&seed=${Date.now()}`;
   }
 
@@ -1840,17 +1839,27 @@ function setupModalsAndSettings() {
 
   const accountPanel = document.getElementById("spanel-account");
   if (accountPanel && !document.getElementById("settings-el-key-input")) {
-    const elBox = document.createElement("div");
-    elBox.className = "pt-2 border-t border-slate-800/80";
-    elBox.innerHTML = `
-      <label class="block text-xs font-semibold text-purple-400 mb-1.5">ElevenLabs Voice API Key (Human Voice)</label>
-      <div class="flex gap-2">
-        <input type="password" id="settings-el-key-input" placeholder="sk_..." value="${escapeHtml(getActiveElevenLabsKey())}"
-          class="flex-1 px-3.5 py-2 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500" />
-        <button type="button" id="save-el-key-btn" class="px-3.5 py-2 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition">Save</button>
+    const keysBox = document.createElement("div");
+    keysBox.className = "pt-2 border-t border-slate-800/80 space-y-3";
+    keysBox.innerHTML = `
+      <div>
+        <label class="block text-xs font-semibold text-purple-400 mb-1.5">ElevenLabs v3 Voice API Key</label>
+        <div class="flex gap-2">
+          <input type="password" id="settings-el-key-input" placeholder="sk_..." value="${escapeHtml(getActiveElevenLabsKey())}"
+            class="flex-1 px-3.5 py-2 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500" />
+          <button type="button" id="save-el-key-btn" class="px-3.5 py-2 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition">Save</button>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-cyan-400 mb-1.5">DeepAI Image Studio API Key</label>
+        <div class="flex gap-2">
+          <input type="password" id="settings-deepai-key-input" placeholder="DeepAI API Key..." value="${escapeHtml(getActiveDeepAiKey())}"
+            class="flex-1 px-3.5 py-2 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-cyan-500" />
+          <button type="button" id="save-deepai-key-btn" class="px-3.5 py-2 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition">Save</button>
+        </div>
       </div>
     `;
-    accountPanel.appendChild(elBox);
+    accountPanel.appendChild(keysBox);
 
     document.getElementById("save-el-key-btn").onclick = async () => {
       const val = document.getElementById("settings-el-key-input").value.trim();
@@ -1860,6 +1869,14 @@ function setupModalsAndSettings() {
         Object.keys(voicePreviewCache).forEach((k) => delete voicePreviewCache[k]);
         await syncElevenLabsVoices();
         showCustomToast("ElevenLabs API Key saved!", "success");
+      }
+    };
+
+    document.getElementById("save-deepai-key-btn").onclick = () => {
+      const val = document.getElementById("settings-deepai-key-input").value.trim();
+      if (val) {
+        localStorage.setItem("mindora_deepai_key", val);
+        showCustomToast("DeepAI Image Key saved!", "success");
       }
     };
   }
@@ -1973,7 +1990,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS V4 SYNCHRONIZED TEXT & VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SYNCHRONIZED TEXT & VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
