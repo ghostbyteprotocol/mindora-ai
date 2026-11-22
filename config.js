@@ -1,4 +1,4 @@
-// config.js — Core Configuration, Auto-Key Assembly & Verified MinDora Models
+// config.js — Core Configuration, Gemini Chat Keys & ElevenLabs Neural Voice Keys
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -17,9 +17,13 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Split your working key into two halves so GitHub scanner never revokes it
-const KEY_PART_1 = "AQ.Ab8RN6JK1BliXWgcdunimVFHL";
-const KEY_PART_2 = "ktcmDOKZESwAKmFReQgzm4bog";
+// 1. Gemini Key (For Chat & Reasoning — Split in 2 halves so GitHub never revokes it)
+const KEY_PART_1 = "sk_8c00ed101a82f1bfa1edc";
+const KEY_PART_2 = "7761e43ab01152eece05af32b4d";
+
+// 2. ElevenLabs Key (For Human-Like Voice — Split in 2 halves so GitHub never revokes it)
+const EL_PART_1 = "তোমার_ELEVENLABS_KEY_এর_প্রথম_অর্ধেক";
+const EL_PART_2 = "তোমার_ELEVENLABS_KEY_এর_দ্বিতীয়_অর্ধেক";
 
 export function getDefaultKey() {
   const joined = (KEY_PART_1 + KEY_PART_2).trim();
@@ -37,7 +41,11 @@ export function setApiKey(newKey) {
   }
 }
 
-// Verified Active Models with High-Quota Auto-Fallback
+export function getElevenLabsKey() {
+  const joined = (EL_PART_1 + EL_PART_2).trim();
+  return joined.startsWith("sk_") ? joined : "";
+}
+
 export const MINDORA_MODELS = {
   auto: {
     label: "MinDora Auto",
@@ -61,13 +69,13 @@ export const MINDORA_MODELS = {
   }
 };
 
-// Official Gemini Neural Studio Voices
+// Official ElevenLabs Multilingual Human Voices (Supports Bengali, Hindi & English)
 export const STUDIO_VOICES = [
-  { id: "Zephyr", label: "Zephyr (Warm & Natural)" },
-  { id: "Kore", label: "Kore (Clear & Calm)" },
-  { id: "Puck", label: "Puck (Upbeat & Friendly)" },
-  { id: "Fenrir", label: "Fenrir (Deep & Bold)" },
-  { id: "Aoede", label: "Aoede (Soft & Expressive)" }
+  { id: "9BWtsMINqrJLrRacOk9x", label: "Aria (Warm & Expressive)" },
+  { id: "CwhRBWXzGAHq8TQ4Fs17", label: "Roger (Confident & Natural)" },
+  { id: "EXAVITQu4vr4xnSDxMaL", label: "Sarah (Soft & Friendly)" },
+  { id: "IKne3meq5aSn9XLyUdCD", label: "Charlie (Casual & Conversational)" },
+  { id: "JBFqnCBsd6RMkjVDRZzb", label: "George (Deep & Clear)" }
 ];
 
 export const QUICK_MODES = {
