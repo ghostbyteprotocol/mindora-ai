@@ -1,5 +1,5 @@
-// app.js — MinDora AI Core Engine (Secure Proxy, KaTeX Math, Neural Studio Voice, PIN Vault)
-import { db, PROXY_URL, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
+// app.js — MinDora AI Core Engine (Zero-Syntax-Error Complete Build)
+import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
 import {
@@ -48,42 +48,8 @@ if (window.speechSynthesis) {
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
-// ==================== SECURE PROXY HELPER ====================
-async function callGeminiViaProxy(modelName, payload, signal = null) {
-  const customKey = getApiKey();
-  // If user manually entered their own custom key in Settings, use direct API; otherwise use secure Proxy
-  if (customKey && customKey.length > 20) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-goog-api-key": customKey
-      },
-      body: JSON.stringify(payload),
-      signal
-    });
-    return { ok: res.ok, data: await res.json() };
-  }
-
-  // Default: Route securely through Google Apps Script Proxy (text/plain avoids CORS preflight)
-  const res = await fetch(PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ model: modelName, payload }),
-    signal
-  });
-  const data = await res.json();
-  return { ok: !data.error && Boolean(data.candidates), data };
-}
-
 // ==================== INITIALIZATION ====================
 document.addEventListener("DOMContentLoaded", () => {
-  // Clear any old broken key saved in localStorage
-  const oldSaved = localStorage.getItem("mindora_api_key");
-  if (oldSaved && oldSaved.includes("LrOs8jPFU2")) {
-    localStorage.removeItem("mindora_api_key");
-  }
-
   applyLanguage(getCurrentLang());
   renderLanguageOptions();
   setupSidebarAndGestures();
@@ -109,8 +75,10 @@ async function loadUserPersonalization() {
       userMemory = snap.data().memory || "";
       customSystemPrompt = snap.data().customPrompt || "";
     }
-    document.getElementById("settings-memory-input").value = userMemory;
-    document.getElementById("settings-custom-prompt").value = customSystemPrompt;
+    const memEl = document.getElementById("settings-memory-input");
+    const sysEl = document.getElementById("settings-custom-prompt");
+    if (memEl) memEl.value = userMemory;
+    if (sysEl) sysEl.value = customSystemPrompt;
   } catch (e) {}
 }
 
@@ -220,8 +188,8 @@ function setupSidebarAndGestures() {
   document.addEventListener("click", (e) => {
     const ctx = document.getElementById("chat-context-menu");
     const vctx = document.getElementById("vault-context-menu");
-    if (!ctx.contains(e.target)) ctx.classList.add("hidden");
-    if (!vctx.contains(e.target)) vctx.classList.add("hidden");
+    if (ctx && !ctx.contains(e.target)) ctx.classList.add("hidden");
+    if (vctx && !vctx.contains(e.target)) vctx.classList.add("hidden");
   });
 }
 
@@ -891,17 +859,25 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
   const ttsModels = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
   for (const model of ttsModels) {
     try {
-      const { ok, data } = await callGeminiViaProxy(model, {
-        contents: [{ parts: [{ text: cleanSpeechText }] }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": getApiKey()
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: cleanSpeechText }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+            }
           }
-        }
+        })
       });
 
-      const inlineData = ok ? data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData : null;
+      const data = await res.json();
+      const inlineData = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
       if (inlineData?.data) {
         return pcmBase64ToWavUrl(inlineData.data, 24000);
       }
@@ -1100,7 +1076,7 @@ function setStreamingState(active) {
   }
 }
 
-// ==================== 8. SMOOTH TYPEWRITER STREAMING VIA SECURE PROXY ====================
+// ==================== 8. SMOOTH TYPEWRITER STREAMING & MULTI-MODEL FALLBACK ====================
 async function animateTextStream(targetEl, fullText, boxEl, signal) {
   const words = fullText.split(/(\s+)/);
   let rendered = "";
@@ -1111,7 +1087,7 @@ async function animateTextStream(targetEl, fullText, boxEl, signal) {
     rendered += words.slice(i, i + step).join("");
     targetEl.innerHTML = marked.parse(rendered);
     boxEl.scrollTop = boxEl.scrollHeight;
-    await new Promise((r) => setTimeout(r, 16));
+    await new Promise((r) => setTimeout(r, 15));
   }
   targetEl.innerHTML = marked.parse(rendered || fullText);
   return rendered || fullText;
@@ -1237,8 +1213,19 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   for (const modelName of modelSpec.chain) {
     if (streamAbortController.signal.aborted) break;
     try {
-      const { ok, data } = await callGeminiViaProxy(modelName, payload, streamAbortController.signal);
-      if (ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": getApiKey()
+        },
+        body: JSON.stringify(payload),
+        signal: streamAbortController.signal
+      });
+
+      const data = await res.json();
+      if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
         const rawReply = data.candidates[0].content.parts[0].text;
         finalReply = await animateTextStream(textTarget, rawReply, box, streamAbortController.signal);
         succeeded = true;
@@ -1260,7 +1247,7 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   setStreamingState(false);
 
   if (!succeeded && !finalReply) {
-    finalReply = `**Error:** ${lastApiError || "Unable to connect. Please try again."}`;
+    finalReply = `**Error:** ${lastApiError || "Unable to connect. Please check your API key in Settings."}`;
     textTarget.innerHTML = marked.parse(finalReply);
   }
 
@@ -1276,10 +1263,17 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
 }
 
 async function callGeminiSingleShot(prompt) {
-  const { ok, data } = await callGeminiViaProxy("gemini-flash-latest", {
-    contents: [{ parts: [{ text: prompt }] }]
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-goog-api-key": getApiKey()
+    },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
   });
-  return ok ? data.candidates?.[0]?.content?.parts?.[0]?.text || "" : "";
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
 async function autoCaptureMemory(text) {
@@ -1287,7 +1281,8 @@ async function autoCaptureMemory(text) {
     const line = `- ${text.slice(0, 120)}`;
     if (!userMemory.includes(line)) {
       userMemory = `${userMemory}\n${line}`.trim();
-      document.getElementById("settings-memory-input").value = userMemory;
+      const memEl = document.getElementById("settings-memory-input");
+      if (memEl) memEl.value = userMemory;
       await setDoc(doc(db, "users", currentUser.uid, "settings", "personalization"), { memory: userMemory }, { merge: true });
     }
   }
@@ -1442,48 +1437,51 @@ function setupLiveVoiceEngine() {
   let isAiSpeakingTurn = false;
   let isWaitingForAiReply = false;
 
-  // Sync voice choice across Live Overlay, Listen Buttons, and Settings
   const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
   studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % STUDIO_VOICES.length;
-  document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+  const voiceLabelEl = document.getElementById("live-voice-label");
+  if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+
   if (settingsVoiceSelect) {
     settingsVoiceSelect.value = String(studioVoiceIndex);
     settingsVoiceSelect.onchange = () => {
       studioVoiceIndex = parseInt(settingsVoiceSelect.value, 10) || 0;
       localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-      document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+      if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
     };
   }
 
   function setLiveTurnUI(state) {
+    if (!stateBadge || !stateDot || !orb) return;
     if (state === "listening") {
       stateBadge.textContent = "Listening";
       stateDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
       orb.classList.remove("speaking", "muted");
-      interruptBtn.classList.add("hidden");
+      if (interruptBtn) interruptBtn.classList.add("hidden");
     } else if (state === "thinking") {
       stateBadge.textContent = "Thinking...";
       stateDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-ping";
       orb.classList.remove("speaking");
-      interruptBtn.classList.add("hidden");
+      if (interruptBtn) interruptBtn.classList.add("hidden");
     } else if (state === "speaking") {
       stateBadge.textContent = "MinDora Speaking";
       stateDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-pulse";
       orb.classList.add("speaking");
-      interruptBtn.classList.remove("hidden");
+      if (interruptBtn) interruptBtn.classList.remove("hidden");
     } else if (state === "muted") {
       stateBadge.textContent = "Muted";
       stateDot.className = "w-2 h-2 rounded-full bg-red-400";
       orb.classList.add("muted");
       orb.classList.remove("speaking");
-      interruptBtn.classList.add("hidden");
+      if (interruptBtn) interruptBtn.classList.add("hidden");
     }
   }
 
   function safeStartMic() {
     if (!recognition || !isLiveActive || isLiveMuted || isAiSpeakingTurn || isWaitingForAiReply) return;
     try {
-      recognition.lang = getCurrentLang() === "bn" ? "bn-IN" : getCurrentLang() === "hi" ? "hi-IN" : "en-IN";
+      const lang = getCurrentLang();
+      recognition.lang = lang === "bn" ? "bn-IN" : lang === "hi" ? "hi-IN" : "en-IN";
       recognition.start();
       setLiveTurnUI("listening");
     } catch (e) {}
@@ -1504,7 +1502,6 @@ function setupLiveVoiceEngine() {
     recognition.interimResults = true;
 
     recognition.onresult = (event) => {
-      // Strictly ignore any echo while AI is speaking or thinking
       if (isAiSpeakingTurn || isWaitingForAiReply) return;
 
       let interim = "";
@@ -1516,13 +1513,12 @@ function setupLiveVoiceEngine() {
       }
 
       if (isLiveActive) {
-        if (interim) userCaption.textContent = `"${interim}..."`;
+        if (interim && userCaption) userCaption.textContent = `"${interim}..."`;
         if (finalTranscript.trim()) {
-          // Lock mic immediately before sending so AI never hears itself
           isWaitingForAiReply = true;
           try { recognition.stop(); } catch (e) {}
-          userCaption.textContent = `You: "${finalTranscript.trim()}"`;
-          statusText.textContent = "Thinking...";
+          if (userCaption) userCaption.textContent = `You: "${finalTranscript.trim()}"`;
+          if (statusText) statusText.textContent = "Thinking...";
           setLiveTurnUI("thinking");
 
           sendPromptPipeline(finalTranscript.trim(), (aiReply) => {
@@ -1557,12 +1553,12 @@ function setupLiveVoiceEngine() {
       if (isLiveMuted) {
         setLiveTurnUI("muted");
       } else {
-        statusText.textContent = "Listening... Go ahead.";
-        setTimeout(safeStartMic, 450); // 450ms echo guard buffer before reopening mic
+        if (statusText) statusText.textContent = "Listening... Go ahead.";
+        setTimeout(safeStartMic, 450);
       }
     };
 
-    statusText.textContent = text.replace(/[*#`_~>$]/g, "").slice(0, 220);
+    if (statusText) statusText.textContent = text.replace(/[*#`_~>$]/g, "").slice(0, 220);
 
     if (!isLiveSpeakerOn || !isLiveActive) {
       finishSpeakingTurn();
@@ -1609,13 +1605,14 @@ function setupLiveVoiceEngine() {
     }
   }
 
-  // Interrupt AI mid-sentence to speak immediately
-  interruptBtn.onclick = () => {
-    stopAllLiveAudio();
-    isWaitingForAiReply = false;
-    statusText.textContent = "Listening...";
-    safeStartMic();
-  };
+  if (interruptBtn) {
+    interruptBtn.onclick = () => {
+      stopAllLiveAudio();
+      isWaitingForAiReply = false;
+      if (statusText) statusText.textContent = "Listening...";
+      safeStartMic();
+    };
+  }
 
   document.getElementById("mic-btn").onclick = () => {
     if (!recognition) return alert("Voice recognition is not supported on this browser.");
@@ -1629,8 +1626,8 @@ function setupLiveVoiceEngine() {
     isLiveActive = true;
     isLiveMuted = false;
     isWaitingForAiReply = false;
-    userCaption.textContent = "";
-    statusText.textContent = "Listening... Speak naturally.";
+    if (userCaption) userCaption.textContent = "";
+    if (statusText) statusText.textContent = "Listening... Speak naturally.";
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
     document.getElementById("live-overlay").classList.remove("hidden");
     safeStartMic();
@@ -1641,12 +1638,12 @@ function setupLiveVoiceEngine() {
     const icon = document.getElementById("live-mute-icon");
     if (isLiveMuted) {
       icon.className = "fa-solid fa-microphone-slash text-red-400";
-      statusText.textContent = "Microphone Muted";
+      if (statusText) statusText.textContent = "Microphone Muted";
       setLiveTurnUI("muted");
       try { recognition.abort(); } catch (e) {}
     } else {
       icon.className = "fa-solid fa-microphone";
-      statusText.textContent = "Listening...";
+      if (statusText) statusText.textContent = "Listening...";
       safeStartMic();
     }
   };
@@ -1666,7 +1663,7 @@ function setupLiveVoiceEngine() {
   document.getElementById("live-voice-style-btn").onclick = () => {
     studioVoiceIndex = (studioVoiceIndex + 1) % STUDIO_VOICES.length;
     localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-    document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+    if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
     if (settingsVoiceSelect) settingsVoiceSelect.value = String(studioVoiceIndex);
   };
 
@@ -1679,7 +1676,6 @@ function setupLiveVoiceEngine() {
     document.getElementById("live-overlay").classList.add("hidden");
   };
 }
-
 
 function escapeHtml(str) {
   return (str || "").replace(/[&<>"']/g, (m) => ({
