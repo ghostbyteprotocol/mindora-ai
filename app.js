@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Native Neural Voice, Bengali Speech & Complete Build)
+// app.js — MinDora AI Core Engine (Zero-Lag Neural Voice, Voice Preview & Complete Build)
 import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -42,6 +42,15 @@ let isLiveActive = false;
 let isLiveMuted = false;
 let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
+const voicePreviewCache = {};
+
+const VOICE_PREVIEW_SAMPLES = {
+  Zephyr: "হ্যালো! আমি জেফির, তোর পার্সোনাল এআই বন্ধু। বল কী সাহায্য লাগবে?",
+  Kore: "হ্যালো! আমি কোরে, একদম পরিষ্কার আর শান্ত গলায় কথা বলি।",
+  Puck: "এই যে! আমি পাক, একদম এনার্জেটিক মুডে আছি! শুরু করা যাক?",
+  Fenrir: "নমস্কার, আমি ফেনরির। গভীর আর স্পষ্ট গলায় বলছি।",
+  Aoede: "হ্যালো! আমি আয়োড, একদম ন্যাচারাল এক্সপ্রেশনে কথা বলি।"
+};
 
 if (window.speechSynthesis) {
   window.speechSynthesis.getVoices();
@@ -810,7 +819,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. NEURAL STUDIO VOICE ENGINE (GEMINI NATIVE AUDIO) ====================
+// ==================== 6. NEURAL STUDIO VOICE ENGINE (DEDICATED TTS + AUTO-RETRY) ====================
 function stopCurrentSpeech() {
   if (activeAudioPlayer) {
     activeAudioPlayer.pause();
@@ -861,44 +870,40 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 1200);
+    .slice(0, 1000);
 
   if (!cleanSpeechText) return null;
 
-  const ttsModels = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-2.5-flash-preview-tts"];
+  // Dedicated fast Gemini TTS models with automatic retry so it NEVER drops to robotic voice
+  const ttsModels = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
   for (const model of ttsModels) {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-goog-api-key": getApiKey()
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Read the following text aloud naturally like a real human friend with warm emotion in its original language. Do not add any extra words:\n\n${cleanSpeechText}`
-                }
-              ]
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": getApiKey()
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: cleanSpeechText }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+              }
             }
-          ],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName } }
-            }
-          }
-        })
-      });
+          })
+        });
 
-      const data = await res.json();
-      const inlineData = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
-      if (inlineData?.data) {
-        return pcmBase64ToWavUrl(inlineData.data, 24000);
-      }
-    } catch (e) {}
+        const data = await res.json();
+        const inlineData = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+        if (inlineData?.data) {
+          return pcmBase64ToWavUrl(inlineData.data, 24000);
+        }
+      } catch (e) {}
+      await new Promise((r) => setTimeout(r, 250));
+    }
   }
   return null;
 }
@@ -1093,7 +1098,7 @@ function setStreamingState(active) {
   }
 }
 
-// ==================== 8. SMOOTH TYPEWRITER STREAMING & MULTI-MODEL FALLBACK ====================
+// ==================== 8. SMOOTH TYPEWRITER STREAMING & ZERO-LAG LIVE AUDIO ====================
 async function animateTextStream(targetEl, fullText, boxEl, signal) {
   const words = fullText.split(/(\s+)/);
   let rendered = "";
@@ -1197,6 +1202,11 @@ async function generateAIResponseOnly(promptText, filePayload, liveVoiceCallback
   const modelSpec = MINDORA_MODELS[selectedKey] || MINDORA_MODELS.auto;
   const modePrompt = QUICK_MODES[activeMode]?.instruction || "";
 
+  // In Live Voice mode, always use ultra-fast flash-lite first for instant response
+  const activeChain = liveVoiceCallback
+    ? ["gemini-flash-lite-latest", "gemini-flash-latest"]
+    : modelSpec.chain;
+
   const systemGuide = `You are MinDora AI, a sharp, friendly, and intelligent personal AI assistant. Respond naturally in the exact language the user writes or speaks in.
 ${modelSpec.styleHint ? `Model Profile: ${modelSpec.styleHint}` : ""}
 Mode Behavior: ${modePrompt}
@@ -1227,7 +1237,7 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   let succeeded = false;
   let lastApiError = "";
 
-  for (const modelName of modelSpec.chain) {
+  for (const modelName of activeChain) {
     if (streamAbortController.signal.aborted) break;
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
@@ -1244,6 +1254,8 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
       const data = await res.json();
       if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
         const rawReply = data.candidates[0].content.parts[0].text;
+        // Start generating neural voice IMMEDIATELY without waiting for typing animation
+        if (liveVoiceCallback) liveVoiceCallback(rawReply);
         finalReply = await animateTextStream(textTarget, rawReply, box, streamAbortController.signal);
         succeeded = true;
         break;
@@ -1275,8 +1287,6 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   });
 
   loadChatMessages(currentChatId);
-
-  if (liveVoiceCallback && succeeded) liveVoiceCallback(finalReply);
 }
 
 async function callGeminiSingleShot(prompt) {
@@ -1437,7 +1447,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE + LIVE PREVIEW ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1452,6 +1462,14 @@ function setupLiveVoiceEngine() {
   const speechLangBtn = document.getElementById("live-speech-lang-btn");
   const speechLangLabel = document.getElementById("live-speech-lang-label");
 
+  // Create a subtle live preview status tag below settings-voice-select automatically
+  let settingsPreviewBadge = null;
+  if (settingsVoiceSelect && settingsVoiceSelect.parentNode) {
+    settingsPreviewBadge = document.createElement("p");
+    settingsPreviewBadge.className = "text-[11px] text-cyan-400 mt-1.5 min-h-[16px]";
+    settingsVoiceSelect.parentNode.appendChild(settingsPreviewBadge);
+  }
+
   const SPEECH_LANGS = [
     { code: "bn-IN", label: "বাংলা" },
     { code: "hi-IN", label: "हिन्दी" },
@@ -1461,6 +1479,7 @@ function setupLiveVoiceEngine() {
   if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
 
   let liveAudioObj = null;
+  let previewAudioObj = null;
   let isAiSpeakingTurn = false;
   let isWaitingForAiReply = false;
 
@@ -1469,12 +1488,51 @@ function setupLiveVoiceEngine() {
   const voiceLabelEl = document.getElementById("live-voice-label");
   if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
 
+  async function playVoicePreview(voiceIdx) {
+    const voiceObj = STUDIO_VOICES[voiceIdx] || STUDIO_VOICES[0];
+    const voiceId = voiceObj.id;
+    const sampleText = VOICE_PREVIEW_SAMPLES[voiceId] || `Hello! I am ${voiceId}.`;
+
+    if (previewAudioObj) {
+      previewAudioObj.pause();
+      previewAudioObj = null;
+    }
+    stopAllLiveAudio();
+    try { if (recognition) recognition.abort(); } catch (e) {}
+
+    if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Loading ${voiceId} preview...`;
+    if (isLiveActive && statusText) statusText.textContent = `${voiceId} ভয়েস প্রিভিউ চলছে...`;
+
+    let wavUrl = voicePreviewCache[voiceId];
+    if (!wavUrl) {
+      wavUrl = await fetchGeminiNeuralAudioUrl(sampleText, voiceId);
+      if (wavUrl) voicePreviewCache[voiceId] = wavUrl;
+    }
+
+    if (wavUrl) {
+      if (settingsPreviewBadge) settingsPreviewBadge.textContent = `🔊 Playing: ${voiceObj.label}`;
+      previewAudioObj = new Audio(wavUrl);
+      previewAudioObj.onended = () => {
+        previewAudioObj = null;
+        if (settingsPreviewBadge) settingsPreviewBadge.textContent = "";
+        if (isLiveActive && !isLiveMuted) {
+          if (statusText) statusText.textContent = "শুনছি... বলো।";
+          safeStartMic();
+        }
+      };
+      previewAudioObj.play().catch(() => {});
+    } else {
+      if (settingsPreviewBadge) settingsPreviewBadge.textContent = "";
+    }
+  }
+
   if (settingsVoiceSelect) {
     settingsVoiceSelect.value = String(studioVoiceIndex);
     settingsVoiceSelect.onchange = () => {
       studioVoiceIndex = parseInt(settingsVoiceSelect.value, 10) || 0;
       localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
       if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+      playVoicePreview(studioVoiceIndex);
     };
   }
 
@@ -1560,7 +1618,7 @@ function setupLiveVoiceEngine() {
           if (statusText) statusText.textContent = "ভাবছি...";
           setLiveTurnUI("thinking");
 
-          const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Reply naturally in 2-3 short conversational sentences without markdown symbols, bullet points, or emojis, as this will be spoken aloud.]`;
+          const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Reply naturally in 2 short conversational sentences without markdown symbols, bullet points, or emojis, as this will be spoken aloud.]`;
           sendPromptPipeline(livePrompt, (aiReply) => {
             isWaitingForAiReply = false;
             speakInLiveMode(aiReply);
@@ -1594,7 +1652,7 @@ function setupLiveVoiceEngine() {
         setLiveTurnUI("muted");
       } else {
         if (statusText) statusText.textContent = "শুনছি... বলো।";
-        setTimeout(safeStartMic, 500);
+        setTimeout(safeStartMic, 450);
       }
     };
 
@@ -1630,17 +1688,8 @@ function setupLiveVoiceEngine() {
         finishSpeakingTurn();
       };
       liveAudioObj.play().catch(finishSpeakingTurn);
-    } else if (window.speechSynthesis) {
-      const clean = text.replace(/```[\s\S]*?```/g, "").replace(/[*#`_~>$]/g, "");
-      const utter = new SpeechSynthesisUtterance(clean);
-      const langCode = detectFallbackLang(clean);
-      utter.lang = langCode;
-      const bestVoice = getBestHumanBrowserVoice(langCode);
-      if (bestVoice) utter.voice = bestVoice;
-      utter.onend = finishSpeakingTurn;
-      utter.onerror = finishSpeakingTurn;
-      window.speechSynthesis.speak(utter);
     } else {
+      // Never drop to robotic browser voice in Live Mode; finish turn cleanly
       finishSpeakingTurn();
     }
   }
@@ -1706,11 +1755,16 @@ function setupLiveVoiceEngine() {
     localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
     if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
     if (settingsVoiceSelect) settingsVoiceSelect.value = String(studioVoiceIndex);
+    playVoicePreview(studioVoiceIndex);
   };
 
   document.getElementById("close-live-btn").onclick = () => {
     isLiveActive = false;
     isWaitingForAiReply = false;
+    if (previewAudioObj) {
+      previewAudioObj.pause();
+      previewAudioObj = null;
+    }
     stopAllLiveAudio();
     orb.classList.remove("speaking", "muted");
     try { recognition.abort(); } catch (e) {}
