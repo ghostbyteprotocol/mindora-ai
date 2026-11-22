@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Zero-Syntax-Error Complete Build)
+// app.js — MinDora AI Core Engine (Complete Clean Build)
 import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -106,18 +106,20 @@ function setupSidebarAndGestures() {
   const backdrop = document.getElementById("sidebar-backdrop");
 
   const openSidebar = () => {
-    sidebar.classList.remove("-translate-x-full");
-    backdrop.classList.remove("hidden");
+    if (sidebar) sidebar.classList.remove("-translate-x-full");
+    if (backdrop) backdrop.classList.remove("hidden");
   };
 
   const closeSidebar = () => {
-    sidebar.classList.add("-translate-x-full");
-    backdrop.classList.add("hidden");
+    if (sidebar) sidebar.classList.add("-translate-x-full");
+    if (backdrop) backdrop.classList.add("hidden");
   };
 
-  document.getElementById("open-sidebar").onclick = openSidebar;
-  document.getElementById("close-sidebar").onclick = closeSidebar;
-  backdrop.onclick = closeSidebar;
+  const openBtn = document.getElementById("open-sidebar");
+  const closeBtn = document.getElementById("close-sidebar");
+  if (openBtn) openBtn.onclick = openSidebar;
+  if (closeBtn) closeBtn.onclick = closeSidebar;
+  if (backdrop) backdrop.onclick = closeSidebar;
 
   let touchStartX = 0;
   let touchStartY = 0;
@@ -130,7 +132,7 @@ function setupSidebarAndGestures() {
   }, { passive: true });
 
   document.addEventListener("touchend", (e) => {
-    if (!currentUser || e.changedTouches.length !== 1) return;
+    if (!currentUser || e.changedTouches.length !== 1 || !sidebar) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
 
@@ -140,50 +142,56 @@ function setupSidebarAndGestures() {
     }
   }, { passive: true });
 
-  document.getElementById("chat-search-input").oninput = () => renderChatList();
+  const searchInput = document.getElementById("chat-search-input");
+  if (searchInput) searchInput.oninput = () => renderChatList();
 
-  document.getElementById("new-chat-btn").onclick = () => {
-    startNewChat();
-    closeSidebar();
-  };
+  const newChatBtn = document.getElementById("new-chat-btn");
+  if (newChatBtn) {
+    newChatBtn.onclick = () => {
+      startNewChat();
+      closeSidebar();
+    };
+  }
 
   const profileBtn = document.getElementById("profile-hold-btn");
-  let holdTimer = null;
-  let longPressTriggered = false;
+  if (profileBtn) {
+    let holdTimer = null;
+    let longPressTriggered = false;
 
-  const startHold = (e) => {
-    if (e.type === "mousedown" && e.button !== 0) return;
-    longPressTriggered = false;
-    profileBtn.classList.add("holding");
-
-    holdTimer = setTimeout(() => {
-      longPressTriggered = true;
-      profileBtn.classList.remove("holding");
-      closeSidebar();
-      openHiddenVaultFlow();
-    }, 5000);
-  };
-
-  const cancelHold = () => {
-    clearTimeout(holdTimer);
-    profileBtn.classList.remove("holding");
-  };
-
-  profileBtn.addEventListener("touchstart", startHold, { passive: true });
-  profileBtn.addEventListener("touchend", cancelHold);
-  profileBtn.addEventListener("touchcancel", cancelHold);
-  profileBtn.addEventListener("mousedown", startHold);
-  profileBtn.addEventListener("mouseup", cancelHold);
-  profileBtn.addEventListener("mouseleave", cancelHold);
-
-  profileBtn.onclick = () => {
-    if (longPressTriggered) {
+    const startHold = (e) => {
+      if (e.type === "mousedown" && e.button !== 0) return;
       longPressTriggered = false;
-      return;
-    }
-    closeSidebar();
-    document.getElementById("settings-modal").classList.remove("hidden");
-  };
+      profileBtn.classList.add("holding");
+
+      holdTimer = setTimeout(() => {
+        longPressTriggered = true;
+        profileBtn.classList.remove("holding");
+        closeSidebar();
+        openHiddenVaultFlow();
+      }, 5000);
+    };
+
+    const cancelHold = () => {
+      clearTimeout(holdTimer);
+      profileBtn.classList.remove("holding");
+    };
+
+    profileBtn.addEventListener("touchstart", startHold, { passive: true });
+    profileBtn.addEventListener("touchend", cancelHold);
+    profileBtn.addEventListener("touchcancel", cancelHold);
+    profileBtn.addEventListener("mousedown", startHold);
+    profileBtn.addEventListener("mouseup", cancelHold);
+    profileBtn.addEventListener("mouseleave", cancelHold);
+
+    profileBtn.onclick = () => {
+      if (longPressTriggered) {
+        longPressTriggered = false;
+        return;
+      }
+      closeSidebar();
+      document.getElementById("settings-modal").classList.remove("hidden");
+    };
+  }
 
   document.addEventListener("click", (e) => {
     const ctx = document.getElementById("chat-context-menu");
@@ -206,7 +214,8 @@ function subscribeToChats() {
 
 function renderChatList() {
   const listEl = document.getElementById("chat-list");
-  const searchTerm = document.getElementById("chat-search-input").value.trim().toLowerCase();
+  if (!listEl) return;
+  const searchTerm = (document.getElementById("chat-search-input")?.value || "").trim().toLowerCase();
   listEl.innerHTML = "";
 
   const visibleChats = allChats
