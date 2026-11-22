@@ -6,67 +6,315 @@
   <title>MinDora AI — Intelligent Multimodal Workspace</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- KaTeX for Crisp Math Equations -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <!-- Icons & Fonts -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg-base: #07090f;
+      --bg-sidebar: #0b0e17;
+      --bg-surface: #111625;
+      --bg-elevated: #171e31;
+      --border-line: rgba(255, 255, 255, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100dvh;
+      width: 100%;
+      background-color: #07090f !important;
+      color: #f1f5f9 !important;
+      overflow: hidden;
+      overscroll-behavior-x: none;
+    }
+
+    /* Ambient Hero Glow */
+    .ambient-glow {
+      background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.11) 0%, rgba(99, 102, 241, 0.05) 38%, transparent 72%);
+    }
+
+    /* Solid Premium Surfaces (Never Transparent Over Text) */
+    .surface-header {
+      background: rgba(9, 12, 20, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .surface-sidebar {
+      background-color: #0b0e17 !important;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 16px 0 40px rgba(0, 0, 0, 0.75);
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .surface-card {
+      background: linear-gradient(160deg, #13192b 0%, #0c101c 100%);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+    }
+
+    .ai-bubble {
+      background: #101524;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 1.35rem;
+      border-top-left-radius: 0.35rem;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+    }
+
+    .user-bubble {
+      background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+      color: #ffffff;
+      border-radius: 1.35rem;
+      border-bottom-right-radius: 0.35rem;
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.28);
+    }
+
+    /* Custom Scrollbars */
+    .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.22); border-radius: 999px; }
+
+    /* Logo Halo */
+    .logo-ring {
+      box-shadow: 0 0 32px rgba(56, 189, 248, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
+    /* 5-Second Profile Hold Ring */
+    .profile-hold-target { position: relative; user-select: none; -webkit-user-select: none; }
+    .profile-hold-ring {
+      position: absolute; inset: -3px; border-radius: 9999px;
+      border: 2px solid transparent; pointer-events: none;
+    }
+    .profile-hold-target.holding .profile-hold-ring {
+      border-top-color: #22d3ee; border-right-color: #3b82f6;
+      animation: spinHold 0.9s linear infinite;
+    }
+    @keyframes spinHold { to { transform: rotate(360deg); } }
+
+    /* Context Menu */
+    .context-menu {
+      background: #121829;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.9);
+      animation: popScale 0.14s ease-out;
+    }
+    @keyframes popScale {
+      from { opacity: 0; transform: scale(0.94); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Markdown & Math Formatting */
+    .prose-mindora {
+      font-size: 0.92rem;
+      line-height: 1.72;
+      color: #e2e8f0;
+      word-break: break-word;
+    }
+    .prose-mindora p { margin-bottom: 0.75rem; }
+    .prose-mindora p:last-child { margin-bottom: 0; }
+    .prose-mindora h1, .prose-mindora h2, .prose-mindora h3 {
+      color: #ffffff; font-weight: 700; margin-top: 1rem; margin-bottom: 0.45rem;
+    }
+    .prose-mindora ul, .prose-mindora ol { margin-left: 1.35rem; margin-bottom: 0.75rem; }
+    .prose-mindora ul { list-style-type: disc; }
+    .prose-mindora ol { list-style-type: decimal; }
+    .prose-mindora strong { color: #ffffff; font-weight: 600; }
+    .prose-mindora code {
+      background: rgba(56, 189, 248, 0.13);
+      color: #38bdf8;
+      padding: 0.15rem 0.4rem;
+      border-radius: 0.4rem;
+      font-size: 0.82rem;
+    }
+    .katex { font-size: 1.04em !important; color: #f8fafc; }
+
+    /* Code Block Sandbox Wrapper */
+    .code-wrapper {
+      background: #070a12;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.9rem;
+      margin: 0.85rem 0;
+      overflow: hidden;
+    }
+    .code-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.5rem 0.85rem;
+      background: #0e1322;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      font-size: 0.72rem;
+    }
+    .code-wrapper pre { margin: 0; padding: 0.9rem; overflow-x: auto; font-size: 0.82rem; color: #e2e8f0; }
+    .code-wrapper pre code { background: transparent; color: inherit; padding: 0; }
+
+    /* Action Pills Below Messages */
+    .msg-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.55rem;
+    }
+    .action-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: #94a3b8;
+      background: #121726;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .action-chip:hover {
+      color: #ffffff;
+      background: #1b243b;
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .action-chip.speaking-active {
+      color: #22d3ee;
+      background: rgba(34, 211, 238, 0.14);
+      border-color: rgba(34, 211, 238, 0.5);
+    }
+
+    /* Streaming Cursor */
+    .streaming-cursor::after {
+      content: "●";
+      color: #38bdf8;
+      margin-left: 4px;
+      animation: pulseDot 0.8s infinite;
+    }
+    @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+    /* Gemini-Style Fluid Live Voice Orb */
+    .gemini-orb-wrap {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .gemini-orb-aura {
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px;
+      background: conic-gradient(from 0deg, #3b82f6, #06b6d4, #8b5cf6, #ec4899, #3b82f6);
+      filter: blur(22px);
+      opacity: 0.65;
+      animation: spinAura 6s linear infinite;
+    }
+    .gemini-orb-core {
+      position: relative;
+      width: 132px;
+      height: 132px;
+      border-radius: 9999px;
+      background: radial-gradient(circle at 32% 28%, #67e8f9 0%, #3b82f6 42%, #4f46e5 78%, #090d1a 100%);
+      box-shadow: inset 0 0 28px rgba(255, 255, 255, 0.45), 0 0 45px rgba(59, 130, 246, 0.5);
+      transition: transform 0.25s ease;
+    }
+    .gemini-orb-wrap.speaking .gemini-orb-core {
+      animation: orbSpeakWave 0.55s ease-in-out infinite alternate;
+    }
+    .gemini-orb-wrap.speaking .gemini-orb-aura {
+      opacity: 0.95;
+      transform: scale(1.15);
+    }
+    .gemini-orb-wrap.muted .gemini-orb-core {
+      background: radial-gradient(circle at 35% 35%, #64748b, #1e293b);
+      box-shadow: none;
+    }
+    .gemini-orb-wrap.muted .gemini-orb-aura { opacity: 0.15; animation: none; }
+
+    @keyframes spinAura { to { transform: rotate(360deg); } }
+    @keyframes orbSpeakWave {
+      0% { transform: scale(0.96); }
+      100% { transform: scale(1.12); }
+    }
+
+    /* Wrong PIN Shake */
+    .shake-error { animation: shakePin 0.36s both; }
+    @keyframes shakePin {
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+  </style>
 </head>
-<body class="bg-cyber-grid selection:bg-blue-500/30 selection:text-cyan-200">
+<body class="ambient-glow selection:bg-blue-500/30 selection:text-cyan-200">
 
   <!-- ==================== 1. AUTHENTICATION SCREEN ==================== -->
-  <section id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#05070E]/95">
-    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[460px] h-[460px] bg-blue-600/15 rounded-full blur-[120px] pointer-events-none"></div>
-
-    <div class="glass-card w-full max-w-[420px] rounded-3xl p-7 relative z-10 my-auto">
-      <!-- Brand Logo -->
+  <section id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#07090F]">
+    <div class="surface-card w-full max-w-[420px] rounded-[28px] p-7 relative z-10 my-auto">
+      <!-- Brand Logo (Loads your logo.png with clean fallback) -->
       <div class="flex flex-col items-center text-center mb-6">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white text-xl shadow-lg shadow-blue-500/25 mb-3">
-          <i class="fa-solid fa-sparkles"></i>
+        <div class="w-16 h-16 rounded-2xl bg-[#0b0f1c] logo-ring flex items-center justify-center overflow-hidden mb-3.5 p-1.5">
+          <img src="logo.png" alt="MinDora AI" class="w-full h-full object-contain rounded-xl"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="hidden w-full h-full rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 items-center justify-center text-white text-2xl">
+            <i class="fa-solid fa-sparkles"></i>
+          </div>
         </div>
         <h1 data-i18n="welcome_title" class="text-2xl font-bold tracking-tight text-white">Welcome to MinDora AI</h1>
         <p data-i18n="welcome_sub" class="text-xs text-slate-400 mt-1">Multimodal Intelligence • Encrypted Vault • Live Voice</p>
       </div>
 
       <!-- Alert Banners -->
-      <div id="auth-error" class="hidden mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
+      <div id="auth-error" class="hidden mb-4 p-3 rounded-2xl bg-red-500/12 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
         <i class="fa-solid fa-circle-exclamation mt-0.5"></i>
         <span id="auth-error-text"></span>
       </div>
-      <div id="auth-success" class="hidden mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2">
+      <div id="auth-success" class="hidden mb-4 p-3 rounded-2xl bg-emerald-500/12 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2">
         <i class="fa-solid fa-circle-check mt-0.5"></i>
         <span id="auth-success-text"></span>
       </div>
 
-      <!-- Social Auth (Google & Apple Only - No Phone) -->
+      <!-- Google & Apple OAuth -->
       <div class="space-y-2.5 mb-5">
-        <button type="button" id="google-login-btn" class="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs flex items-center justify-center gap-2.5 transition shadow">
+        <button type="button" id="google-login-btn" class="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-semibold text-xs flex items-center justify-center gap-2.5 transition shadow-md">
           <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-4 h-4" alt="Google" />
           <span data-i18n="continue_google">Continue with Google</span>
         </button>
-        <button type="button" id="apple-login-btn" class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 font-semibold text-xs flex items-center justify-center gap-2.5 transition">
-          <i class="fa-brands fa-apple text-sm"></i>
+        <button type="button" id="apple-login-btn" class="w-full py-3 px-4 rounded-2xl bg-[#151c2e] hover:bg-[#1c253d] text-white border border-slate-700/80 font-semibold text-xs flex items-center justify-center gap-2.5 transition">
+          <i class="fa-brands fa-apple text-base"></i>
           <span data-i18n="continue_apple">Continue with Apple</span>
         </button>
       </div>
 
-      <!-- Divider -->
       <div class="relative my-4 flex items-center justify-center">
         <div class="border-t border-slate-800 w-full"></div>
-        <span class="bg-[#0D1221] px-3 text-[10px] uppercase tracking-wider text-slate-500">Email & Username</span>
+        <span class="bg-[#101525] px-3 text-[10px] uppercase tracking-wider text-slate-500">Email & Username</span>
         <div class="border-t border-slate-800 w-full"></div>
       </div>
 
-      <!-- Sign In / Sign Up Switcher -->
-      <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 mb-4 text-xs font-medium">
-        <button type="button" id="tab-signin" data-i18n="tab_signin" class="py-2 rounded-lg bg-blue-600 text-white shadow transition">Sign In</button>
-        <button type="button" id="tab-signup" data-i18n="tab_signup" class="py-2 rounded-lg text-slate-400 hover:text-white transition">Sign Up</button>
+      <!-- Sign In / Sign Up Tabs -->
+      <div class="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-[#090c16] border border-slate-800 mb-4 text-xs font-semibold">
+        <button type="button" id="tab-signin" data-i18n="tab_signin" class="py-2 rounded-xl bg-blue-600 text-white shadow transition">Sign In</button>
+        <button type="button" id="tab-signup" data-i18n="tab_signup" class="py-2 rounded-xl text-slate-400 hover:text-white transition">Sign Up</button>
       </div>
 
-      <!-- Email / Username Sign In Form -->
+      <!-- Sign In Form -->
       <form id="signin-form" class="space-y-3.5">
         <div>
           <label data-i18n="identifier_label" class="block text-[11px] font-medium text-slate-400 mb-1">Username or Email</label>
           <input type="text" id="signin-identifier" required placeholder="ayan_dev or you@email.com"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition" />
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition" />
         </div>
         <div>
           <div class="flex justify-between items-center mb-1">
@@ -74,38 +322,38 @@
             <button type="button" id="forgot-password-btn" data-i18n="forgot_password" class="text-[11px] text-blue-400 hover:text-blue-300">Forgot password?</button>
           </div>
           <input type="password" id="signin-password" required placeholder="••••••••"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition" />
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition" />
         </div>
-        <button type="submit" id="signin-submit-btn" data-i18n="signin_btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/20 transition">
+        <button type="submit" id="signin-submit-btn" data-i18n="signin_btn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/25 transition">
           Sign In
         </button>
       </form>
 
-      <!-- Email Sign Up Form -->
+      <!-- Sign Up Form -->
       <form id="signup-form" class="hidden space-y-3">
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label data-i18n="fullname_label" class="block text-[11px] font-medium text-slate-400 mb-1">Full Name</label>
             <input type="text" id="signup-name" required placeholder="Ayan Karmakar"
-              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+              class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
           </div>
           <div>
             <label data-i18n="username_label" class="block text-[11px] font-medium text-slate-400 mb-1">Username</label>
             <input type="text" id="signup-username" required placeholder="ayan_dev"
-              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+              class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
           </div>
         </div>
         <div>
           <label data-i18n="email_label" class="block text-[11px] font-medium text-slate-400 mb-1">Email Address</label>
           <input type="email" id="signup-email" required placeholder="you@example.com"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
         </div>
         <div>
           <label data-i18n="password_label" class="block text-[11px] font-medium text-slate-400 mb-1">Password</label>
           <input type="password" id="signup-password" required minlength="6" placeholder="Min. 6 characters"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
         </div>
-        <button type="submit" id="signup-submit-btn" data-i18n="signup_btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/20 transition">
+        <button type="submit" id="signup-submit-btn" data-i18n="signup_btn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/25 transition">
           Create Account
         </button>
       </form>
@@ -113,8 +361,8 @@
   </section>
 
   <!-- ==================== 2. EMAIL VERIFICATION SCREEN ==================== -->
-  <section id="verify-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#05070E]/95">
-    <div class="glass-card w-full max-w-md rounded-3xl p-7 text-center space-y-4">
+  <section id="verify-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#07090F]">
+    <div class="surface-card w-full max-w-md rounded-[28px] p-7 text-center space-y-4">
       <div class="w-14 h-14 mx-auto rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-2xl text-cyan-400">
         <i class="fa-solid fa-envelope-circle-check"></i>
       </div>
@@ -122,17 +370,17 @@
       <p data-i18n="verify_desc" class="text-xs text-slate-400 leading-relaxed">
         We sent a verification link to your inbox. Click the link, then tap below to continue.
       </p>
-      <p id="verify-email-display" class="text-xs font-mono text-cyan-300 bg-slate-900/90 py-2 px-3 rounded-xl border border-slate-800"></p>
+      <p id="verify-email-display" class="text-xs font-mono text-cyan-300 bg-[#080b14] py-2.5 px-3 rounded-xl border border-slate-800"></p>
       <div id="verify-status-msg" class="hidden text-xs text-amber-300"></div>
       <div class="space-y-2.5 pt-2">
-        <button type="button" id="check-verified-btn" data-i18n="ive_verified" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition">
+        <button type="button" id="check-verified-btn" data-i18n="ive_verified" class="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition">
           I've Verified My Email
         </button>
         <div class="flex gap-2">
-          <button type="button" id="resend-verify-btn" data-i18n="resend_email" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+          <button type="button" id="resend-verify-btn" data-i18n="resend_email" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
             Resend Link
           </button>
-          <button type="button" id="verify-logout-btn" class="flex-1 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition">
+          <button type="button" id="verify-logout-btn" class="flex-1 py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-medium">
             Change Email
           </button>
         </div>
@@ -141,26 +389,26 @@
   </section>
 
   <!-- ==================== 3. PROFILE ONBOARDING SCREEN ==================== -->
-  <section id="onboarding-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#05070E]/95">
-    <div class="glass-card w-full max-w-md rounded-3xl p-7 my-auto">
+  <section id="onboarding-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#07090F]">
+    <div class="surface-card w-full max-w-md rounded-[28px] p-7 my-auto">
       <div class="text-center mb-5">
         <h2 data-i18n="onboard_title" class="text-xl font-bold text-white">Complete Your Profile</h2>
         <p data-i18n="onboard_sub" class="text-xs text-slate-400 mt-1">Set up your identity to personalize MinDora AI</p>
       </div>
 
-      <div id="onboard-error" class="hidden mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs"></div>
+      <div id="onboard-error" class="hidden mb-4 p-3 rounded-xl bg-red-500/12 border border-red-500/30 text-red-300 text-xs"></div>
 
       <form id="onboarding-form" class="space-y-3.5">
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label data-i18n="fullname_label" class="block text-[11px] font-medium text-slate-400 mb-1">Full Name</label>
             <input type="text" id="onboard-name" required placeholder="Ayan Karmakar"
-              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+              class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
           <div>
             <label data-i18n="username_label" class="block text-[11px] font-medium text-slate-400 mb-1">Username</label>
             <input type="text" id="onboard-username" required placeholder="ayan_dev"
-              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+              class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
         </div>
 
@@ -168,12 +416,12 @@
           <div>
             <label data-i18n="age_label" class="block text-[11px] font-medium text-slate-400 mb-1">Age</label>
             <input type="number" id="onboard-age" required min="10" max="100" placeholder="19"
-              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+              class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
           <div>
             <label data-i18n="gender_label" class="block text-[11px] font-medium text-slate-400 mb-1">Gender</label>
             <select id="onboard-gender" required
-              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500">
+              class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500">
               <option value="Male">Male</option>
               <option value="Female">Female</option>
               <option value="Non-binary">Non-binary</option>
@@ -183,12 +431,12 @@
         </div>
 
         <div id="onboard-password-wrap">
-          <label data-i18n="set_pass_label" class="block text-[11px] font-medium text-slate-400 mb-1">Set Account Password (Optional for Google/Apple)</label>
+          <label data-i18n="set_pass_label" class="block text-[11px] font-medium text-slate-400 mb-1">Set Account Password (Optional)</label>
           <input type="password" id="onboard-password" minlength="6" placeholder="Min. 6 characters"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
         </div>
 
-        <button type="submit" id="onboard-submit-btn" data-i18n="finish_setup" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-semibold text-sm shadow-lg transition">
+        <button type="submit" id="onboard-submit-btn" data-i18n="finish_setup" class="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-semibold text-sm shadow-lg transition">
           Enter MinDora AI
         </button>
       </form>
@@ -198,52 +446,55 @@
   <!-- ==================== 4. MAIN WORKSPACE ==================== -->
   <div id="app-screen" class="hidden flex-1 flex h-full overflow-hidden relative">
 
-    <!-- Mobile Backdrop for Swipeable Sidebar -->
-    <div id="sidebar-backdrop" class="hidden fixed inset-0 z-30 sidebar-backdrop md:hidden"></div>
+    <!-- Mobile Backdrop -->
+    <div id="sidebar-backdrop" class="hidden fixed inset-0 z-30 bg-black/75 backdrop-blur-sm md:hidden"></div>
 
-    <!-- LEFT DRAWER SIDEBAR (Swipe Right to Open) -->
-    <aside id="sidebar" class="sidebar-drawer fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-slate-800/80 flex flex-col transform -translate-x-full md:translate-x-0">
-      <!-- Sidebar Header -->
-      <div class="h-14 px-4 border-b border-slate-800/80 flex items-center justify-between">
+    <!-- SOLID DARK DRAWER SIDEBAR -->
+    <aside id="sidebar" class="surface-sidebar fixed md:static inset-y-0 left-0 z-40 w-72 flex flex-col transform -translate-x-full md:translate-x-0">
+      <!-- Brand Header -->
+      <div class="h-14 px-4 border-b border-slate-800/90 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white text-sm shadow">
-            <i class="fa-solid fa-sparkles"></i>
+          <div class="w-8 h-8 rounded-xl bg-[#13192b] border border-slate-700/80 flex items-center justify-center overflow-hidden p-0.5">
+            <img src="logo.png" alt="Logo" class="w-full h-full object-contain rounded-lg"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+            <div class="hidden w-full h-full rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-400 items-center justify-center text-white text-xs">
+              <i class="fa-solid fa-sparkles"></i>
+            </div>
           </div>
           <div>
             <span class="font-bold text-sm text-white tracking-tight block leading-none">MinDora AI</span>
-            <span class="text-[10px] text-cyan-400 font-medium">PRO WORKSPACE</span>
+            <span class="text-[10px] text-cyan-400 font-semibold">PRO STUDIO</span>
           </div>
         </div>
-        <button id="close-sidebar" class="md:hidden text-slate-400 hover:text-white p-1.5">
+        <button id="close-sidebar" class="md:hidden text-slate-400 hover:text-white p-1.5 rounded-lg">
           <i class="fa-solid fa-xmark text-base"></i>
         </button>
       </div>
 
       <!-- New Chat & Search -->
       <div class="p-3 space-y-2.5">
-        <button id="new-chat-btn" class="w-full py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-between shadow-md shadow-blue-600/20 transition">
+        <button id="new-chat-btn" class="w-full py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center justify-between shadow-lg shadow-blue-600/20 transition">
           <span class="flex items-center gap-2"><i class="fa-solid fa-plus"></i> <span data-i18n="new_chat">New Chat</span></span>
-          <i class="fa-solid fa-pen-to-square text-[11px] opacity-80"></i>
+          <i class="fa-solid fa-pen-to-square text-[11px] opacity-85"></i>
         </button>
 
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-[11px]"></i>
           <input type="text" id="chat-search-input" data-i18n-placeholder="search_chats" placeholder="Search conversations..."
-            class="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+            class="w-full pl-8 pr-3 py-2 rounded-xl bg-[#07090f] border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
         </div>
       </div>
 
-      <!-- Chat List Header -->
       <div class="px-4 py-1 flex items-center justify-between">
-        <span data-i18n="recent_chats" class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Recent Chats</span>
+        <span data-i18n="recent_chats" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Recent Chats</span>
       </div>
 
-      <!-- Chat Items Container -->
+      <!-- Chat Items -->
       <div id="chat-list" class="flex-1 overflow-y-auto px-3 space-y-1 custom-scroll"></div>
 
-      <!-- Profile Footer (Tap = Full System Settings | Hold 5s = Hidden Vault) -->
-      <div class="p-3 border-t border-slate-800/80 bg-slate-950/50">
-        <div id="profile-hold-btn" class="profile-hold-target flex items-center justify-between p-2 rounded-2xl hover:bg-slate-900/90 border border-transparent hover:border-slate-800 cursor-pointer transition" title="Tap for Settings • Hold 5s for Hidden Vault">
+      <!-- Profile Footer (Tap = Settings | Hold 5s = Hidden Vault) -->
+      <div class="p-3 border-t border-slate-800/90 bg-[#080a12]">
+        <div id="profile-hold-btn" class="profile-hold-target flex items-center justify-between p-2 rounded-2xl hover:bg-[#131827] border border-slate-800/60 cursor-pointer transition" title="Tap for Settings • Hold 5s for Hidden Vault">
           <div class="flex items-center gap-3 min-w-0">
             <div class="relative shrink-0">
               <div class="profile-hold-ring"></div>
@@ -257,55 +508,56 @@
               <p id="sidebar-username" class="text-[10px] text-slate-400 truncate">@ayan_dev</p>
             </div>
           </div>
-          <i class="fa-solid fa-sliders text-slate-400 text-xs pr-1"></i>
+          <div class="w-7 h-7 rounded-xl bg-slate-800/80 flex items-center justify-center text-slate-300">
+            <i class="fa-solid fa-gear text-xs"></i>
+          </div>
         </div>
       </div>
     </aside>
 
     <!-- MAIN CHAT WORKSPACE -->
-    <main id="main-touch-area" class="flex-1 flex flex-col h-full relative min-w-0">
+    <main id="main-touch-area" class="flex-1 flex flex-col h-full relative min-w-0 bg-[#07090F]">
 
-      <!-- Top Header with Centered MinDora Model Selector -->
-      <header class="h-14 glass-panel border-b border-slate-800/80 px-3 md:px-5 flex items-center justify-between z-20 gap-2">
-        <!-- Left: Sidebar Toggle -->
+      <!-- Top Header -->
+      <header class="h-14 surface-header px-3 md:px-5 flex items-center justify-between z-20 gap-2">
         <div class="flex items-center gap-2">
-          <button id="open-sidebar" class="md:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/70 transition">
-            <i class="fa-solid fa-bars-staggered text-base"></i>
+          <button id="open-sidebar" class="md:hidden w-9 h-9 rounded-xl bg-[#121726] border border-slate-800 text-slate-200 flex items-center justify-center">
+            <i class="fa-solid fa-bars-staggered text-sm"></i>
           </button>
         </div>
 
-        <!-- Center: MinDora Model Switcher -->
-        <div class="flex items-center gap-2 bg-slate-900/95 border border-slate-700/80 rounded-full px-3.5 py-1.5 shadow-inner">
+        <!-- Center: MinDora Model Switcher Pill -->
+        <div class="flex items-center gap-2 bg-[#121726] border border-slate-700/80 rounded-full px-3.5 py-1.5 shadow-md">
           <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
           <select id="model-select" class="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer">
-            <option value="auto" class="bg-slate-900">MinDora Auto</option>
-            <option value="mindora-1" class="bg-slate-900">MinDora 1</option>
-            <option value="mindora-2" class="bg-slate-900">MinDora 2</option>
-            <option value="mindora-3" class="bg-slate-900">MinDora 3</option>
+            <option value="auto" class="bg-[#121726]">MinDora Auto</option>
+            <option value="mindora-1" class="bg-[#121726]">MinDora 1</option>
+            <option value="mindora-2" class="bg-[#121726]">MinDora 2</option>
+            <option value="mindora-3" class="bg-[#121726]">MinDora 3</option>
           </select>
         </div>
 
-        <!-- Right: Dedicated Create Image Button -->
+        <!-- Right: Create Image Button -->
         <div class="flex items-center gap-1.5">
-          <button id="open-imagine-modal-btn" class="px-3 py-1.5 rounded-full bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/35 text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition">
-            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <button id="open-imagine-modal-btn" class="px-3 py-1.5 rounded-full bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-200 text-xs font-semibold flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
             <span data-i18n="create_image" class="hidden sm:inline">Create Image</span>
           </button>
         </div>
       </header>
 
       <!-- 1-Tap Quick Mode Pills -->
-      <div class="px-3 py-2 border-b border-slate-800/40 bg-[#070A13]/80 flex items-center justify-center gap-1.5 overflow-x-auto custom-scroll">
-        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-blue-600/20 text-cyan-300 border border-blue-500/40 transition" data-mode="default">
+      <div class="px-3 py-2 border-b border-slate-800/60 bg-[#090c14] flex items-center justify-center gap-1.5 overflow-x-auto custom-scroll">
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-600/25 text-cyan-300 border border-blue-500/40 transition" data-mode="default">
           <i class="fa-solid fa-sparkles mr-1"></i>Default
         </button>
-        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white transition" data-mode="coder">
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-[#111625] text-slate-400 border border-slate-800 hover:text-white transition" data-mode="coder">
           <i class="fa-solid fa-code mr-1"></i>Coder
         </button>
-        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white transition" data-mode="study">
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-[#111625] text-slate-400 border border-slate-800 hover:text-white transition" data-mode="study">
           <i class="fa-solid fa-graduation-cap mr-1"></i>Study
         </button>
-        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white transition" data-mode="creative">
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-[#111625] text-slate-400 border border-slate-800 hover:text-white transition" data-mode="creative">
           <i class="fa-solid fa-palette mr-1"></i>Creative
         </button>
       </div>
@@ -313,19 +565,23 @@
       <!-- Messages Viewport -->
       <div id="messages-box" class="flex-1 overflow-y-auto p-3.5 md:p-6 space-y-5 custom-scroll">
         <div id="welcome-hero" class="max-w-xl mx-auto my-8 text-center space-y-5">
-          <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600/25 to-cyan-400/25 border border-cyan-500/30 flex items-center justify-center text-3xl text-cyan-400 shadow-lg">
-            <i class="fa-solid fa-sparkles"></i>
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-[#111625] logo-ring flex items-center justify-center overflow-hidden p-1.5">
+            <img src="logo.png" alt="MinDora" class="w-full h-full object-contain rounded-xl"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+            <div class="hidden w-full h-full rounded-xl bg-gradient-to-tr from-blue-600/30 to-cyan-400/30 items-center justify-center text-3xl text-cyan-400">
+              <i class="fa-solid fa-sparkles"></i>
+            </div>
           </div>
           <div>
             <h2 data-i18n="hero_title" class="text-xl md:text-2xl font-bold text-white">How can MinDora help you today?</h2>
             <p data-i18n="hero_sub" class="text-xs text-slate-400 mt-1.5">Upload files, generate HD images, preview live code, or talk hands-free.</p>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
-            <button type="button" class="quick-prompt glass-panel p-3.5 rounded-2xl hover:border-cyan-500/40 transition" data-prompt="Build a modern animated neon login card using single-file HTML and CSS.">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+            <button type="button" class="quick-prompt bg-[#101524] border border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl transition shadow" data-prompt="Build a modern animated neon login card using single-file HTML and CSS.">
               <div class="text-cyan-400 text-xs font-semibold mb-1"><i class="fa-solid fa-play mr-1.5"></i>Live Code Preview</div>
               <p class="text-[11px] text-slate-400">Build an animated neon login card & run it live</p>
             </button>
-            <button type="button" class="quick-prompt glass-panel p-3.5 rounded-2xl hover:border-purple-500/40 transition" data-prompt="/imagine Ultra-detailed futuristic AI robot studio, cinematic lighting, 8k">
+            <button type="button" class="quick-prompt bg-[#101524] border border-slate-800 hover:border-purple-500/50 p-4 rounded-2xl transition shadow" data-prompt="/imagine Ultra-detailed futuristic AI robot studio, cinematic lighting, 8k">
               <div class="text-purple-400 text-xs font-semibold mb-1"><i class="fa-solid fa-image mr-1.5"></i>HD Image Studio</div>
               <p class="text-[11px] text-slate-400">Generate a futuristic AI studio artwork</p>
             </button>
@@ -333,11 +589,11 @@
         </div>
       </div>
 
-      <!-- File Attachment Preview Strip -->
-      <div id="attachment-preview" class="hidden px-4 py-2 bg-slate-900/95 border-t border-slate-800 flex items-center justify-between">
+      <!-- Attachment Preview Bar -->
+      <div id="attachment-preview" class="hidden px-4 py-2 bg-[#0f1422] border-t border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-3 min-w-0">
-          <img id="attachment-thumb" class="hidden w-10 h-10 object-cover rounded-lg border border-slate-700" />
-          <div id="attachment-file-icon" class="hidden w-10 h-10 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
+          <img id="attachment-thumb" class="hidden w-10 h-10 object-cover rounded-xl border border-slate-700" />
+          <div id="attachment-file-icon" class="hidden w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
             <i class="fa-solid fa-file-lines"></i>
           </div>
           <div class="truncate">
@@ -345,52 +601,52 @@
             <p id="attachment-type" class="text-[10px] text-cyan-400">Attached</p>
           </div>
         </div>
-        <button type="button" id="clear-attachment-btn" class="px-2.5 py-1 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs shrink-0">
+        <button type="button" id="clear-attachment-btn" class="px-2.5 py-1 rounded-xl bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs shrink-0">
           Remove
         </button>
       </div>
 
-      <!-- Bottom Input Dock -->
-      <div class="p-2.5 md:p-4 glass-panel border-t border-slate-800/80">
-        <div class="max-w-3xl mx-auto flex items-end gap-1.5">
+      <!-- Floating Bottom Composer Dock -->
+      <div class="p-2.5 md:p-4 surface-header border-t border-slate-800/80">
+        <div class="max-w-3xl mx-auto flex items-end gap-2">
           <!-- Main Input Pill -->
-          <div class="flex-1 flex items-end gap-1 bg-slate-950/95 border border-slate-800 focus-within:border-blue-500/70 rounded-2xl p-1.5 shadow-xl min-w-0">
+          <div class="flex-1 flex items-end gap-1 bg-[#111625] border border-slate-700/80 focus-within:border-blue-500 rounded-[22px] p-1.5 shadow-xl min-w-0">
             <!-- Upload All Files Except Video -->
-            <label class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 cursor-pointer transition shrink-0" title="Upload Image, PDF, Audio, or Code (No Video)">
+            <label class="w-9 h-9 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center cursor-pointer transition shrink-0" title="Upload Image, PDF, Audio, or Code (No Video)">
               <i class="fa-solid fa-paperclip text-sm"></i>
               <input type="file" id="file-input" accept="image/*,application/pdf,audio/*,.txt,.csv,.json,.js,.html,.css,.py,.java,.c,.cpp,.md" class="hidden" />
             </label>
 
-            <!-- Magic Prompt Enhancer -->
-            <button type="button" id="enhance-prompt-btn" title="Enhance Prompt" class="p-2 rounded-xl text-amber-400 hover:bg-amber-500/15 transition shrink-0">
+            <!-- Prompt Enhancer -->
+            <button type="button" id="enhance-prompt-btn" title="Enhance Prompt" class="w-9 h-9 rounded-xl text-amber-400 hover:bg-amber-500/15 flex items-center justify-center transition shrink-0">
               <i class="fa-solid fa-wand-sparkles text-xs"></i>
             </button>
 
             <!-- Textarea -->
             <textarea id="chat-input" rows="1" data-i18n-placeholder="input_placeholder" placeholder="Message MinDora AI or /imagine..."
-              class="flex-1 min-w-0 bg-transparent py-2 px-1 text-sm text-white placeholder-slate-500 focus:outline-none resize-none max-h-32 custom-scroll"></textarea>
+              class="flex-1 min-w-0 bg-transparent py-2 px-1.5 text-sm text-white placeholder-slate-500 focus:outline-none resize-none max-h-32 custom-scroll"></textarea>
 
-            <!-- Send / Stop Toggle Button (Right side of Chat Box) -->
-            <button type="button" id="send-stop-btn" title="Send / Stop" class="p-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow transition shrink-0">
+            <!-- Send / Stop Button -->
+            <button type="button" id="send-stop-btn" title="Send / Stop" class="h-9 px-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow transition shrink-0 flex items-center justify-center">
               <i id="send-stop-icon" class="fa-solid fa-arrow-up"></i>
             </button>
           </div>
 
-          <!-- Mic Dictation Button (Right of Send) -->
-          <button type="button" id="mic-btn" title="Voice Input" class="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition shrink-0">
+          <!-- Mic Button -->
+          <button type="button" id="mic-btn" title="Voice Input" class="w-11 h-11 rounded-2xl bg-[#111625] hover:bg-[#1a2238] border border-slate-700/80 text-slate-200 flex items-center justify-center transition shrink-0 shadow">
             <i class="fa-solid fa-microphone text-sm"></i>
           </button>
 
-          <!-- Live Talk Button (Right of Mic) -->
-          <button type="button" id="live-talk-btn" title="Live Voice Conversation" class="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-600/20 transition shrink-0">
-            <i class="fa-solid fa-waveform-lines text-sm"></i>
+          <!-- Live Talk Button -->
+          <button type="button" id="live-talk-btn" title="Live Voice Talk" class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold flex items-center justify-center shadow-lg shadow-emerald-500/25 transition shrink-0">
+            <i class="fa-solid fa-waveform-lines text-base"></i>
           </button>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- ==================== 5. CHAT CONTEXT MENU (Rename, Delete, Pin, Hide, Lock) ==================== -->
+  <!-- ==================== 5. CHAT CONTEXT MENU ==================== -->
   <div id="chat-context-menu" class="hidden fixed z-50 w-44 rounded-2xl p-1.5 context-menu text-xs">
     <button type="button" id="ctx-pin-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5">
       <i class="fa-solid fa-thumbtack text-cyan-400 w-3.5"></i><span>Pin / Unpin</span>
@@ -414,11 +670,11 @@
   </div>
 
   <!-- ==================== 6. HIDDEN VAULT MODAL ==================== -->
-  <div id="vault-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="glass-card w-full max-w-md rounded-3xl p-6 space-y-4">
+  <div id="vault-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="surface-card w-full max-w-md rounded-3xl p-6 space-y-4">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400">
+          <div class="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400">
             <i class="fa-solid fa-user-secret"></i>
           </div>
           <div>
@@ -428,12 +684,11 @@
         </div>
         <button type="button" id="close-vault-btn" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
       </div>
-
       <div id="vault-chat-list" class="max-h-72 overflow-y-auto space-y-2 custom-scroll"></div>
     </div>
   </div>
 
-  <!-- Hidden Vault Item Action Menu -->
+  <!-- Vault Context Menu -->
   <div id="vault-context-menu" class="hidden fixed z-50 w-40 rounded-2xl p-1.5 context-menu text-xs">
     <button type="button" id="vctx-unhide-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-cyan-300 flex items-center gap-2">
       <i class="fa-solid fa-eye w-3.5"></i><span>Unhide</span>
@@ -446,35 +701,36 @@
     </button>
   </div>
 
-  <!-- ==================== 7. LIVE VOICE TALK OVERLAY (Auto-Language) ==================== -->
-  <div id="live-overlay" class="hidden fixed inset-0 z-50 bg-[#05070E]/96 backdrop-blur-2xl flex flex-col items-center justify-between p-6 text-center">
-    <div class="pt-4">
-      <span class="px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-medium">
-        Auto-Language Detection Active
+  <!-- ==================== 7. GEMINI-STYLE LIVE VOICE OVERLAY ==================== -->
+  <div id="live-overlay" class="hidden fixed inset-0 z-50 bg-[#060811] flex flex-col items-center justify-between p-6 text-center">
+    <div class="pt-4 flex items-center gap-2">
+      <span class="px-3.5 py-1.5 rounded-full bg-[#111625] border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
+        <i class="fa-solid fa-sparkles mr-1.5"></i>MinDora Live • Neural Voice
       </span>
     </div>
 
-    <div class="flex flex-col items-center my-auto">
-      <div id="live-orb" class="w-36 h-36 rounded-full voice-orb-core flex items-center justify-center text-4xl text-white mb-7">
-        <i class="fa-solid fa-waveform-lines"></i>
+    <div class="flex flex-col items-center my-auto px-4">
+      <div id="live-orb" class="gemini-orb-wrap mb-8">
+        <div class="gemini-orb-aura"></div>
+        <div class="gemini-orb-core"></div>
       </div>
       <h2 class="text-xl font-bold text-white mb-2">MinDora Live</h2>
-      <p id="live-status-text" class="text-sm text-cyan-300 max-w-md min-h-[44px] px-4">Listening... Speak in any language.</p>
+      <p id="live-status-text" class="text-sm text-cyan-300 max-w-md min-h-[48px] leading-relaxed">Listening... Speak in any language.</p>
     </div>
 
-    <!-- Bottom Controls: Mute, Speaker, Voice Changer, End -->
-    <div class="flex items-center gap-3 pb-4">
-      <button type="button" id="live-mute-btn" class="w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center text-base transition" title="Mute / Unmute Mic">
+    <!-- Bottom Controls: Mute, Speaker, Studio Voice Changer, End -->
+    <div class="flex items-center gap-3 pb-5">
+      <button type="button" id="live-mute-btn" class="w-12 h-12 rounded-full bg-[#13192b] hover:bg-[#1c253d] border border-slate-700 text-white flex items-center justify-center text-base transition" title="Mute / Unmute">
         <i id="live-mute-icon" class="fa-solid fa-microphone"></i>
       </button>
 
-      <button type="button" id="live-speaker-btn" class="w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-cyan-400 flex items-center justify-center text-base transition" title="Speaker On / Off">
+      <button type="button" id="live-speaker-btn" class="w-12 h-12 rounded-full bg-[#13192b] hover:bg-[#1c253d] border border-slate-700 text-cyan-400 flex items-center justify-center text-base transition" title="Speaker On / Off">
         <i id="live-speaker-icon" class="fa-solid fa-volume-high"></i>
       </button>
 
-      <button type="button" id="live-voice-style-btn" class="px-4 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition" title="Change Voice Tone">
+      <button type="button" id="live-voice-style-btn" class="px-4 h-12 rounded-full bg-[#13192b] hover:bg-[#1c253d] border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition" title="Switch Studio Voice">
         <i class="fa-solid fa-sliders text-purple-400"></i>
-        <span id="live-voice-label">Natural</span>
+        <span id="live-voice-label">Zephyr • Warm</span>
       </button>
 
       <button type="button" id="close-live-btn" class="w-12 h-12 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center text-base shadow-lg shadow-red-600/30 transition" title="End Call">
@@ -483,9 +739,9 @@
     </div>
   </div>
 
-  <!-- ==================== 8. DEDICATED CREATE IMAGE STUDIO MODAL ==================== -->
-  <div id="imagine-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="glass-card w-full max-w-md rounded-3xl p-6 space-y-4">
+  <!-- ==================== 8. HD IMAGE STUDIO MODAL ==================== -->
+  <div id="imagine-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="surface-card w-full max-w-md rounded-3xl p-6 space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="text-base font-bold text-white"><i class="fa-solid fa-wand-magic-sparkles text-purple-400 mr-2"></i>HD Image Studio</h3>
         <button type="button" id="close-imagine-modal" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
@@ -494,13 +750,13 @@
       <div>
         <label class="block text-[11px] text-slate-400 mb-1">Describe your image</label>
         <textarea id="imagine-prompt-input" rows="3" placeholder="A futuristic neon cyberpunk city in rain, ultra detailed, 8k..."
-          class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500 resize-none"></textarea>
+          class="w-full p-3 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500 resize-none"></textarea>
       </div>
 
       <div class="grid grid-cols-2 gap-2.5">
         <div>
           <label class="block text-[11px] text-slate-400 mb-1">Style</label>
-          <select id="imagine-style" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none">
+          <select id="imagine-style" class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none">
             <option value="photorealistic, 8k resolution, sharp focus">Photorealistic</option>
             <option value="anime masterpiece, vibrant studio lighting">Anime Art</option>
             <option value="cyberpunk neon aesthetic, futuristic">Cyberpunk</option>
@@ -510,7 +766,7 @@
         </div>
         <div>
           <label class="block text-[11px] text-slate-400 mb-1">Aspect Ratio</label>
-          <select id="imagine-ratio" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none">
+          <select id="imagine-ratio" class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none">
             <option value="1024x1024">1:1 Square (HD)</option>
             <option value="1280x720">16:9 Landscape</option>
             <option value="720x1280">9:16 Portrait</option>
@@ -518,15 +774,15 @@
         </div>
       </div>
 
-      <button type="button" id="generate-image-btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-xs shadow-lg transition">
+      <button type="button" id="generate-image-btn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-xs shadow-lg transition">
         Generate High-Quality Image
       </button>
     </div>
   </div>
 
-  <!-- ==================== 9. UNIFIED SECURITY PIN MODAL ==================== -->
-  <div id="pin-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-    <div id="pin-modal-card" class="glass-card w-full max-w-xs rounded-3xl p-6 space-y-4 text-center">
+  <!-- ==================== 9. SECURITY PIN MODAL ==================== -->
+  <div id="pin-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div id="pin-modal-card" class="surface-card w-full max-w-xs rounded-3xl p-6 space-y-4 text-center">
       <div class="w-12 h-12 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-xl text-amber-400">
         <i class="fa-solid fa-shield-halved"></i>
       </div>
@@ -537,24 +793,24 @@
 
       <div id="pin-old-wrap" class="hidden">
         <input type="password" id="pin-old-input" inputmode="numeric" maxlength="6" placeholder="Old PIN"
-          class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center font-mono tracking-widest text-sm text-white focus:outline-none focus:border-amber-500" />
+          class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-center font-mono tracking-widest text-sm text-white focus:outline-none focus:border-amber-500" />
       </div>
 
       <div>
         <input type="password" id="pin-input" inputmode="numeric" maxlength="6" placeholder="••••"
-          class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center font-mono tracking-widest text-base text-white focus:outline-none focus:border-blue-500" />
+          class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-center font-mono tracking-widest text-base text-white focus:outline-none focus:border-blue-500" />
       </div>
 
       <div id="pin-confirm-wrap" class="hidden">
         <input type="password" id="pin-confirm-input" inputmode="numeric" maxlength="6" placeholder="Confirm PIN"
-          class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center font-mono tracking-widest text-sm text-white focus:outline-none focus:border-blue-500" />
+          class="w-full px-3 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-center font-mono tracking-widest text-sm text-white focus:outline-none focus:border-blue-500" />
       </div>
 
       <p id="pin-error-text" class="hidden text-[11px] text-red-400"></p>
 
       <div class="flex gap-2">
-        <button type="button" id="close-pin-modal" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium">Cancel</button>
-        <button type="button" id="pin-submit-btn" class="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">Confirm</button>
+        <button type="button" id="close-pin-modal" class="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium">Cancel</button>
+        <button type="button" id="pin-submit-btn" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">Confirm</button>
       </div>
 
       <button type="button" id="forgot-pin-trigger-btn" class="text-[11px] text-blue-400 hover:underline">
@@ -565,7 +821,7 @@
 
   <!-- ==================== 10. FORGOT PIN RE-AUTH MODAL ==================== -->
   <div id="forgot-pin-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="glass-card w-full max-w-sm rounded-3xl p-6 space-y-4">
+    <div class="surface-card w-full max-w-sm rounded-3xl p-6 space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-bold text-white">Reset Security PIN</h3>
         <button type="button" id="close-forgot-pin-modal" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
@@ -574,7 +830,7 @@
 
       <div id="forgot-pin-email-box" class="space-y-2">
         <input type="password" id="forgot-pin-account-pass" placeholder="Enter your account password"
-          class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+          class="w-full px-3.5 py-2.5 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
       </div>
 
       <div id="forgot-pin-oauth-box" class="hidden">
@@ -591,29 +847,24 @@
     </div>
   </div>
 
-  <!-- ==================== 11. FULL SYSTEM & SETTINGS HUB ==================== -->
-  <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 md:p-6">
-    <div class="glass-card w-full max-w-2xl rounded-3xl overflow-hidden flex flex-col max-h-[90dvh]">
-      <!-- Top Bar -->
+  <!-- ==================== 11. SYSTEM & SETTINGS HUB ==================== -->
+  <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 md:p-6">
+    <div class="surface-card w-full max-w-2xl rounded-3xl overflow-hidden flex flex-col max-h-[90dvh]">
       <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
         <h3 data-i18n="settings_title" class="text-base font-bold text-white">System & Settings</h3>
         <button type="button" id="close-settings-btn" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-base"></i></button>
       </div>
 
-      <!-- 4 Navigation Tabs -->
-      <div class="grid grid-cols-4 gap-1 p-2 bg-slate-950/70 border-b border-slate-800 text-[11px] font-medium">
+      <div class="grid grid-cols-4 gap-1 p-2 bg-[#080b14] border-b border-slate-800 text-[11px] font-semibold">
         <button type="button" class="settings-tab py-2 rounded-xl bg-blue-600 text-white" data-stab="account" data-i18n="tab_account">Account</button>
         <button type="button" class="settings-tab py-2 rounded-xl text-slate-400 hover:text-white" data-stab="personalization" data-i18n="tab_personalization">Personalization</button>
         <button type="button" class="settings-tab py-2 rounded-xl text-slate-400 hover:text-white" data-stab="security" data-i18n="tab_security">Security & PIN</button>
         <button type="button" class="settings-tab py-2 rounded-xl text-slate-400 hover:text-white" data-stab="language" data-i18n="tab_language">Language</button>
       </div>
 
-      <!-- Tab Panels Container -->
       <div class="flex-1 overflow-y-auto p-5 space-y-5 custom-scroll">
-
-        <!-- TAB A: ACCOUNT -->
+        <!-- ACCOUNT TAB -->
         <div id="spanel-account" class="settings-panel space-y-4">
-          <!-- Profile Photo Upload -->
           <div class="flex items-center gap-4">
             <div class="relative">
               <img id="settings-avatar-img" class="hidden w-16 h-16 rounded-full object-cover border-2 border-cyan-500/50" alt="Avatar" />
@@ -633,19 +884,19 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label data-i18n="fullname_label" class="block text-[11px] text-slate-400 mb-1">Full Name</label>
-              <input type="text" id="settings-fullname" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+              <input type="text" id="settings-fullname" class="w-full px-3 py-2 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
             </div>
             <div>
               <label data-i18n="username_label" class="block text-[11px] text-slate-400 mb-1">Username</label>
-              <input type="text" id="settings-username" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+              <input type="text" id="settings-username" class="w-full px-3 py-2 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
             </div>
             <div>
               <label data-i18n="age_label" class="block text-[11px] text-slate-400 mb-1">Age</label>
-              <input type="number" id="settings-age" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+              <input type="number" id="settings-age" class="w-full px-3 py-2 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
             </div>
             <div>
               <label data-i18n="gender_label" class="block text-[11px] text-slate-400 mb-1">Gender</label>
-              <select id="settings-gender" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none">
+              <select id="settings-gender" class="w-full px-3 py-2 rounded-xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none">
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
                 <option value="Non-binary">Non-binary</option>
@@ -654,20 +905,18 @@
             </div>
           </div>
 
-          <!-- Password Change / Reset -->
-          <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+          <div class="p-3.5 rounded-2xl bg-[#080b14] border border-slate-800 space-y-2.5">
             <p class="text-xs font-semibold text-white">Password Management</p>
             <div class="flex gap-2">
-              <input type="password" id="settings-new-pass" placeholder="New password (min 6 chars)" class="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none" />
+              <input type="password" id="settings-new-pass" placeholder="New password (min 6 chars)" class="flex-1 px-3 py-2 rounded-xl bg-[#111625] border border-slate-800 text-xs text-white focus:outline-none" />
               <button type="button" id="update-pass-btn" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold">Update</button>
             </div>
             <button type="button" id="settings-reset-email-btn" class="text-[11px] text-blue-400 hover:underline">Send Password Reset Email instead</button>
           </div>
 
-          <!-- API Key Config -->
-          <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2">
+          <div class="p-3.5 rounded-2xl bg-[#080b14] border border-slate-800 space-y-2">
             <label class="block text-[11px] text-slate-400">Gemini Auth / API Key</label>
-            <input type="text" id="settings-api-key" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-cyan-300 focus:outline-none" />
+            <input type="text" id="settings-api-key" class="w-full px-3 py-2 rounded-xl bg-[#111625] border border-slate-800 text-xs font-mono text-cyan-300 focus:outline-none" />
           </div>
 
           <div class="flex items-center justify-between pt-2">
@@ -680,20 +929,18 @@
           </div>
         </div>
 
-        <!-- TAB B: PERSONALIZATION (Memory + Custom System Prompt) -->
+        <!-- PERSONALIZATION TAB -->
         <div id="spanel-personalization" class="settings-panel hidden space-y-4">
           <div>
             <label data-i18n="memory_title" class="block text-xs font-semibold text-cyan-400 mb-1.5">Auto & Custom Memory</label>
-            <p class="text-[11px] text-slate-400 mb-2">MinDora automatically learns facts from your chats and stores them here. You can freely edit or delete anything.</p>
             <textarea id="settings-memory-input" rows="5" placeholder="Facts MinDora remembers about you..."
-              class="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+              class="w-full p-3 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
           </div>
 
           <div>
             <label data-i18n="custom_prompt_title" class="block text-xs font-semibold text-purple-400 mb-1.5">Custom System Instructions</label>
-            <p class="text-[11px] text-slate-400 mb-2">Tell MinDora how you want it to behave, talk, or format answers across every chat.</p>
             <textarea id="settings-custom-prompt" rows="4" placeholder="e.g., Always explain with real-world examples, keep answers crisp..."
-              class="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500"></textarea>
+              class="w-full p-3 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500"></textarea>
           </div>
 
           <div class="flex justify-end">
@@ -703,9 +950,9 @@
           </div>
         </div>
 
-        <!-- TAB C: SECURITY & PIN -->
+        <!-- SECURITY TAB -->
         <div id="spanel-security" class="settings-panel hidden space-y-4">
-          <div class="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+          <div class="p-4 rounded-2xl bg-[#080b14] border border-slate-800 space-y-3">
             <div class="flex items-center justify-between">
               <div>
                 <h4 data-i18n="pin_title" class="text-sm font-bold text-white">Security PIN</h4>
@@ -725,20 +972,19 @@
           </div>
         </div>
 
-        <!-- TAB D: LANGUAGE -->
+        <!-- LANGUAGE TAB -->
         <div id="spanel-language" class="settings-panel hidden space-y-3">
           <h4 data-i18n="language_title" class="text-xs font-semibold text-slate-300">Interface Language</h4>
           <div id="language-list-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
         </div>
-
       </div>
     </div>
   </div>
 
-  <!-- ==================== 12. LIVE CODE PREVIEW SANDBOX MODAL ==================== -->
+  <!-- ==================== 12. LIVE CODE PREVIEW MODAL ==================== -->
   <div id="code-preview-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 md:p-6">
-    <div class="glass-card w-full max-w-4xl h-[82dvh] rounded-3xl overflow-hidden flex flex-col">
-      <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+    <div class="surface-card w-full max-w-4xl h-[82dvh] rounded-3xl overflow-hidden flex flex-col">
+      <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-[#080b14]">
         <div class="flex items-center gap-2">
           <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
           <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
@@ -753,7 +999,6 @@
     </div>
   </div>
 
-  <!-- Main App Entry Point -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
