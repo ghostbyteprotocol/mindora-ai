@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Zero-Lag Neural Voice, Voice Preview & Complete Build)
+// app.js — MinDora AI Core Engine (Rock-Solid Web Build, Unlocked Mobile Neural Audio & Clean Bengali STT)
 import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -32,7 +32,6 @@ let activeMode = "default";
 let attachedFile = null;
 let isStreaming = false;
 let streamAbortController = null;
-let activeAudioPlayer = null;
 let activeAudioBtn = null;
 
 let targetContextChat = null;
@@ -44,8 +43,12 @@ let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
 const voicePreviewCache = {};
 
+// Single gesture-unlocked Audio player for mobile browsers (prevents stutter & autoplay blocks)
+const sharedAudioPlayer = new Audio();
+sharedAudioPlayer.preload = "auto";
+
 const VOICE_PREVIEW_SAMPLES = {
-  Zephyr: "হ্যালো! আমি জেফির, তোর পার্সোনাল এআই বন্ধু। বল কী সাহায্য লাগবে?",
+  Zephyr: "হ্যালো! আমি জেফির। বল, আজ তোকে কীভাবে সাহায্য করতে পারি?",
   Kore: "হ্যালো! আমি কোরে, একদম পরিষ্কার আর শান্ত গলায় কথা বলি।",
   Puck: "এই যে! আমি পাক, একদম এনার্জেটিক মুডে আছি! শুরু করা যাক?",
   Fenrir: "নমস্কার, আমি ফেনরির। গভীর আর স্পষ্ট গলায় বলছি।",
@@ -55,6 +58,14 @@ const VOICE_PREVIEW_SAMPLES = {
 if (window.speechSynthesis) {
   window.speechSynthesis.getVoices();
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+// Unlock mobile audio context on first user tap
+function unlockMobileAudio() {
+  try {
+    sharedAudioPlayer.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+    sharedAudioPlayer.play().then(() => sharedAudioPlayer.pause()).catch(() => {});
+  } catch (e) {}
 }
 
 // ==================== INITIALIZATION ====================
@@ -684,6 +695,7 @@ function createMessageElement(msg, index) {
     });
 
     const listenBtn = createActionChip("fa-solid fa-volume-high", "Listen", () => {
+      unlockMobileAudio();
       toggleNeuralListen(msg.text, listenBtn);
     });
 
@@ -819,12 +831,11 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. NEURAL STUDIO VOICE ENGINE (DEDICATED TTS + AUTO-RETRY) ====================
+// ==================== 6. NEURAL STUDIO VOICE ENGINE ====================
 function stopCurrentSpeech() {
-  if (activeAudioPlayer) {
-    activeAudioPlayer.pause();
-    activeAudioPlayer = null;
-  }
+  sharedAudioPlayer.pause();
+  sharedAudioPlayer.onended = null;
+  sharedAudioPlayer.onerror = null;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   if (activeAudioBtn) {
     activeAudioBtn.classList.remove("speaking-active");
@@ -870,11 +881,10 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 1000);
+    .slice(0, 900);
 
   if (!cleanSpeechText) return null;
 
-  // Dedicated fast Gemini TTS models with automatic retry so it NEVER drops to robotic voice
   const ttsModels = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
   for (const model of ttsModels) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -902,7 +912,7 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
           return pcmBase64ToWavUrl(inlineData.data, 24000);
         }
       } catch (e) {}
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
   return null;
@@ -944,11 +954,10 @@ async function toggleNeuralListen(text, btnEl) {
 
   if (wavUrl) {
     btnEl.querySelector("span").textContent = "Stop";
-    const audio = new Audio(wavUrl);
-    activeAudioPlayer = audio;
-    audio.onended = () => stopCurrentSpeech();
-    audio.onerror = () => stopCurrentSpeech();
-    audio.play();
+    sharedAudioPlayer.src = wavUrl;
+    sharedAudioPlayer.onended = () => stopCurrentSpeech();
+    sharedAudioPlayer.onerror = () => stopCurrentSpeech();
+    sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else if (window.speechSynthesis) {
     btnEl.querySelector("span").textContent = "Stop";
     const clean = text.replace(/```[\s\S]*?```/g, "").replace(/[*#`_~>$]/g, "");
@@ -1098,7 +1107,7 @@ function setStreamingState(active) {
   }
 }
 
-// ==================== 8. SMOOTH TYPEWRITER STREAMING & ZERO-LAG LIVE AUDIO ====================
+// ==================== 8. SMOOTH TYPEWRITER STREAMING & ZERO-FREEZE LIVE CALLBACK ====================
 async function animateTextStream(targetEl, fullText, boxEl, signal) {
   const words = fullText.split(/(\s+)/);
   let rendered = "";
@@ -1118,7 +1127,10 @@ async function animateTextStream(targetEl, fullText, boxEl, signal) {
 async function sendPromptPipeline(overrideText = null, liveVoiceCallback = null) {
   const input = document.getElementById("chat-input");
   const rawText = (overrideText !== null ? overrideText : input.value).trim();
-  if (!rawText && !attachedFile) return;
+  if (!rawText && !attachedFile) {
+    if (liveVoiceCallback) liveVoiceCallback("");
+    return;
+  }
 
   input.value = "";
   input.style.height = "auto";
@@ -1126,52 +1138,57 @@ async function sendPromptPipeline(overrideText = null, liveVoiceCallback = null)
   const filePayload = attachedFile;
   clearAttachment();
 
-  if (!currentChatId) {
-    const newChatRef = await addDoc(collection(db, "users", currentUser.uid, "chats"), {
-      title: (rawText || filePayload?.name || "New Chat").slice(0, 38),
-      pinned: false,
-      locked: false,
-      hidden: false,
-      updatedAt: serverTimestamp()
+  try {
+    if (!currentChatId) {
+      const newChatRef = await addDoc(collection(db, "users", currentUser.uid, "chats"), {
+        title: (rawText || filePayload?.name || "New Chat").slice(0, 38),
+        pinned: false,
+        locked: false,
+        hidden: false,
+        updatedAt: serverTimestamp()
+      });
+      currentChatId = newChatRef.id;
+    } else {
+      await updateDoc(doc(db, "users", currentUser.uid, "chats", currentChatId), {
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    const displayUserText = rawText.replace(/\n\n\[Voice Conversation Note:[\s\S]*\]$/, "") || `Analyze attached file: ${filePayload.name}`;
+    const userMsgObj = {
+      role: "user",
+      text: displayUserText,
+      attachmentName: filePayload ? filePayload.name : null,
+      imageUrl: filePayload?.isImage ? `data:${filePayload.mime};base64,${filePayload.base64}` : null,
+      createdAt: serverTimestamp()
+    };
+
+    const hero = document.getElementById("welcome-hero");
+    if (hero) hero.remove();
+
+    const box = document.getElementById("messages-box");
+    box.appendChild(createMessageElement(userMsgObj, currentMessages.length));
+    box.scrollTop = box.scrollHeight;
+
+    await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
+      role: "user",
+      text: displayUserText,
+      attachmentName: filePayload ? filePayload.name : null,
+      createdAt: serverTimestamp()
     });
-    currentChatId = newChatRef.id;
-  } else {
-    await updateDoc(doc(db, "users", currentUser.uid, "chats", currentChatId), {
-      updatedAt: serverTimestamp()
-    });
+
+    if (rawText.toLowerCase().startsWith("/imagine ")) {
+      const prompt = rawText.slice(9).trim();
+      await triggerImageGeneration(prompt, "1024x1024");
+      if (liveVoiceCallback) liveVoiceCallback("ছবি তৈরি হয়ে গেছে।");
+      return;
+    }
+
+    autoCaptureMemory(displayUserText);
+    await generateAIResponseOnly(rawText, filePayload, liveVoiceCallback);
+  } catch (err) {
+    if (liveVoiceCallback) liveVoiceCallback("নেটওয়ার্কে একটু সমস্যা হচ্ছে, আবার বলো।");
   }
-
-  const displayUserText = rawText || `Analyze attached file: ${filePayload.name}`;
-  const userMsgObj = {
-    role: "user",
-    text: displayUserText,
-    attachmentName: filePayload ? filePayload.name : null,
-    imageUrl: filePayload?.isImage ? `data:${filePayload.mime};base64,${filePayload.base64}` : null,
-    createdAt: serverTimestamp()
-  };
-
-  const hero = document.getElementById("welcome-hero");
-  if (hero) hero.remove();
-
-  const box = document.getElementById("messages-box");
-  box.appendChild(createMessageElement(userMsgObj, currentMessages.length));
-  box.scrollTop = box.scrollHeight;
-
-  await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
-    role: "user",
-    text: displayUserText,
-    attachmentName: filePayload ? filePayload.name : null,
-    createdAt: serverTimestamp()
-  });
-
-  if (rawText.toLowerCase().startsWith("/imagine ")) {
-    const prompt = rawText.slice(9).trim();
-    await triggerImageGeneration(prompt, "1024x1024");
-    return;
-  }
-
-  autoCaptureMemory(displayUserText);
-  await generateAIResponseOnly(displayUserText, filePayload, liveVoiceCallback);
 }
 
 async function generateAIResponseOnly(promptText, filePayload, liveVoiceCallback = null) {
@@ -1202,7 +1219,6 @@ async function generateAIResponseOnly(promptText, filePayload, liveVoiceCallback
   const modelSpec = MINDORA_MODELS[selectedKey] || MINDORA_MODELS.auto;
   const modePrompt = QUICK_MODES[activeMode]?.instruction || "";
 
-  // In Live Voice mode, always use ultra-fast flash-lite first for instant response
   const activeChain = liveVoiceCallback
     ? ["gemini-flash-lite-latest", "gemini-flash-latest"]
     : modelSpec.chain;
@@ -1254,7 +1270,6 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
       const data = await res.json();
       if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
         const rawReply = data.candidates[0].content.parts[0].text;
-        // Start generating neural voice IMMEDIATELY without waiting for typing animation
         if (liveVoiceCallback) liveVoiceCallback(rawReply);
         finalReply = await animateTextStream(textTarget, rawReply, box, streamAbortController.signal);
         succeeded = true;
@@ -1278,6 +1293,7 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   if (!succeeded && !finalReply) {
     finalReply = `**Error:** ${lastApiError || "Unable to connect. Please check your API key in Settings."}`;
     textTarget.innerHTML = marked.parse(finalReply);
+    if (liveVoiceCallback) liveVoiceCallback("দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না। একটু পর আবার চেষ্টা করো।");
   }
 
   await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
@@ -1447,7 +1463,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE + LIVE PREVIEW ====================
+// ==================== 11. GEMINI LIVE PROFESSIONAL VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1462,7 +1478,6 @@ function setupLiveVoiceEngine() {
   const speechLangBtn = document.getElementById("live-speech-lang-btn");
   const speechLangLabel = document.getElementById("live-speech-lang-label");
 
-  // Create a subtle live preview status tag below settings-voice-select automatically
   let settingsPreviewBadge = null;
   if (settingsVoiceSelect && settingsVoiceSelect.parentNode) {
     settingsPreviewBadge = document.createElement("p");
@@ -1478,8 +1493,6 @@ function setupLiveVoiceEngine() {
   let speechLangIdx = parseInt(localStorage.getItem("mindora_speech_lang_idx") || "0", 10) % SPEECH_LANGS.length;
   if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
 
-  let liveAudioObj = null;
-  let previewAudioObj = null;
   let isAiSpeakingTurn = false;
   let isWaitingForAiReply = false;
 
@@ -1488,20 +1501,25 @@ function setupLiveVoiceEngine() {
   const voiceLabelEl = document.getElementById("live-voice-label");
   if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
 
+  function stopAllLiveAudio() {
+    isAiSpeakingTurn = false;
+    sharedAudioPlayer.pause();
+    sharedAudioPlayer.onended = null;
+    sharedAudioPlayer.onerror = null;
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
   async function playVoicePreview(voiceIdx) {
+    unlockMobileAudio();
     const voiceObj = STUDIO_VOICES[voiceIdx] || STUDIO_VOICES[0];
     const voiceId = voiceObj.id;
     const sampleText = VOICE_PREVIEW_SAMPLES[voiceId] || `Hello! I am ${voiceId}.`;
 
-    if (previewAudioObj) {
-      previewAudioObj.pause();
-      previewAudioObj = null;
-    }
     stopAllLiveAudio();
     try { if (recognition) recognition.abort(); } catch (e) {}
 
     if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Loading ${voiceId} preview...`;
-    if (isLiveActive && statusText) statusText.textContent = `${voiceId} ভয়েস প্রিভিউ চলছে...`;
+    if (isLiveActive && statusText) statusText.textContent = `${voiceId} ভয়েস প্রিভিউ লোড হচ্ছে...`;
 
     let wavUrl = voicePreviewCache[voiceId];
     if (!wavUrl) {
@@ -1511,18 +1529,21 @@ function setupLiveVoiceEngine() {
 
     if (wavUrl) {
       if (settingsPreviewBadge) settingsPreviewBadge.textContent = `🔊 Playing: ${voiceObj.label}`;
-      previewAudioObj = new Audio(wavUrl);
-      previewAudioObj.onended = () => {
-        previewAudioObj = null;
+      if (isLiveActive && statusText) statusText.textContent = sampleText;
+      setLiveTurnUI("speaking");
+
+      sharedAudioPlayer.src = wavUrl;
+      sharedAudioPlayer.onended = () => {
         if (settingsPreviewBadge) settingsPreviewBadge.textContent = "";
         if (isLiveActive && !isLiveMuted) {
           if (statusText) statusText.textContent = "শুনছি... বলো।";
-          safeStartMic();
+          setTimeout(safeStartMic, 400);
         }
       };
-      previewAudioObj.play().catch(() => {});
+      sharedAudioPlayer.play().catch(() => {});
     } else {
       if (settingsPreviewBadge) settingsPreviewBadge.textContent = "";
+      if (isLiveActive && !isLiveMuted) safeStartMic();
     }
   }
 
@@ -1543,7 +1564,7 @@ function setupLiveVoiceEngine() {
       if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
       if (recognition && isLiveActive && !isLiveMuted && !isAiSpeakingTurn) {
         try { recognition.abort(); } catch (e) {}
-        setTimeout(safeStartMic, 250);
+        setTimeout(safeStartMic, 300);
       }
     };
   }
@@ -1583,50 +1604,33 @@ function setupLiveVoiceEngine() {
     } catch (e) {}
   }
 
-  function stopAllLiveAudio() {
-    isAiSpeakingTurn = false;
-    if (liveAudioObj) {
-      liveAudioObj.pause();
-      liveAudioObj.src = "";
-      liveAudioObj = null;
-    }
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-  }
-
   if (recognition) {
+    // Clean single-shot sentence mode prevents Android Chrome Bengali word duplication/garbling
     recognition.continuous = false;
-    recognition.interimResults = true;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
       if (isAiSpeakingTurn || isWaitingForAiReply) return;
 
-      let interim = "";
-      let finalTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const txt = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalTranscript += txt;
-        else interim += txt;
-      }
+      const spokenText = (event.results?.[0]?.[0]?.transcript || "").trim();
+      if (!spokenText) return;
 
       if (isLiveActive) {
-        if (interim && userCaption) userCaption.textContent = `"${interim}..."`;
-        if (finalTranscript.trim()) {
-          isWaitingForAiReply = true;
-          try { recognition.stop(); } catch (e) {}
-          const spokenText = finalTranscript.trim();
-          if (userCaption) userCaption.textContent = `তুমি: "${spokenText}"`;
-          if (statusText) statusText.textContent = "ভাবছি...";
-          setLiveTurnUI("thinking");
+        isWaitingForAiReply = true;
+        try { recognition.abort(); } catch (e) {}
+        if (userCaption) userCaption.textContent = `তুমি: "${spokenText}"`;
+        if (statusText) statusText.textContent = "ভাবছি...";
+        setLiveTurnUI("thinking");
 
-          const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Reply naturally in 2 short conversational sentences without markdown symbols, bullet points, or emojis, as this will be spoken aloud.]`;
-          sendPromptPipeline(livePrompt, (aiReply) => {
-            isWaitingForAiReply = false;
-            speakInLiveMode(aiReply);
-          });
-        }
-      } else if (finalTranscript.trim()) {
+        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Reply naturally in 2 short conversational sentences without markdown symbols, bullet points, or emojis, as this will be spoken aloud.]`;
+        sendPromptPipeline(livePrompt, (aiReply) => {
+          isWaitingForAiReply = false;
+          speakInLiveMode(aiReply);
+        });
+      } else {
         const input = document.getElementById("chat-input");
-        input.value = (input.value + " " + finalTranscript).trim();
+        input.value = (input.value + " " + spokenText).trim();
         input.focus();
       }
     };
@@ -1639,7 +1643,7 @@ function setupLiveVoiceEngine() {
 
     recognition.onend = () => {
       if (isLiveActive && !isLiveMuted && !isAiSpeakingTurn && !isWaitingForAiReply) {
-        setTimeout(safeStartMic, 350);
+        setTimeout(safeStartMic, 400);
       }
     };
   }
@@ -1652,13 +1656,15 @@ function setupLiveVoiceEngine() {
         setLiveTurnUI("muted");
       } else {
         if (statusText) statusText.textContent = "শুনছি... বলো।";
+        // 450ms hardware audio-focus guard so Android switches cleanly from Speaker to Mic
         setTimeout(safeStartMic, 450);
       }
     };
 
-    if (statusText) statusText.textContent = text.replace(/[*#`_~>$]/g, "").slice(0, 260);
+    const cleanDisplay = text.replace(/[*#`_~>$]/g, "").trim();
+    if (statusText) statusText.textContent = cleanDisplay.slice(0, 260);
 
-    if (!isLiveSpeakerOn || !isLiveActive) {
+    if (!isLiveSpeakerOn || !isLiveActive || !cleanDisplay) {
       finishSpeakingTurn();
       return;
     }
@@ -1666,11 +1672,11 @@ function setupLiveVoiceEngine() {
     stopCurrentSpeech();
     stopAllLiveAudio();
     isAiSpeakingTurn = true;
-    try { recognition.abort(); } catch (e) {}
+    try { if (recognition) recognition.abort(); } catch (e) {}
     setLiveTurnUI("speaking");
 
     const voiceName = STUDIO_VOICES[studioVoiceIndex]?.id || "Zephyr";
-    const wavUrl = await fetchGeminiNeuralAudioUrl(text, voiceName);
+    const wavUrl = await fetchGeminiNeuralAudioUrl(cleanDisplay, voiceName);
 
     if (!isLiveActive || !isLiveSpeakerOn || !isAiSpeakingTurn) {
       finishSpeakingTurn();
@@ -1678,18 +1684,20 @@ function setupLiveVoiceEngine() {
     }
 
     if (wavUrl) {
-      liveAudioObj = new Audio(wavUrl);
-      liveAudioObj.onended = () => {
-        liveAudioObj = null;
-        finishSpeakingTurn();
-      };
-      liveAudioObj.onerror = () => {
-        liveAudioObj = null;
-        finishSpeakingTurn();
-      };
-      liveAudioObj.play().catch(finishSpeakingTurn);
+      sharedAudioPlayer.src = wavUrl;
+      sharedAudioPlayer.onended = finishSpeakingTurn;
+      sharedAudioPlayer.onerror = finishSpeakingTurn;
+      sharedAudioPlayer.play().catch(finishSpeakingTurn);
+    } else if (window.speechSynthesis) {
+      const utter = new SpeechSynthesisUtterance(cleanDisplay);
+      const langCode = detectFallbackLang(cleanDisplay);
+      utter.lang = langCode;
+      const bestVoice = getBestHumanBrowserVoice(langCode);
+      if (bestVoice) utter.voice = bestVoice;
+      utter.onend = finishSpeakingTurn;
+      utter.onerror = finishSpeakingTurn;
+      window.speechSynthesis.speak(utter);
     } else {
-      // Never drop to robotic browser voice in Live Mode; finish turn cleanly
       finishSpeakingTurn();
     }
   }
@@ -1711,6 +1719,7 @@ function setupLiveVoiceEngine() {
 
   document.getElementById("live-talk-btn").onclick = () => {
     if (!recognition) return alert("Live Voice is not supported on this browser.");
+    unlockMobileAudio();
     stopCurrentSpeech();
     stopAllLiveAudio();
     isLiveActive = true;
@@ -1730,7 +1739,7 @@ function setupLiveVoiceEngine() {
       icon.className = "fa-solid fa-microphone-slash text-red-400";
       if (statusText) statusText.textContent = "Microphone Muted";
       setLiveTurnUI("muted");
-      try { recognition.abort(); } catch (e) {}
+      try { if (recognition) recognition.abort(); } catch (e) {}
     } else {
       icon.className = "fa-solid fa-microphone";
       if (statusText) statusText.textContent = "শুনছি...";
@@ -1742,6 +1751,7 @@ function setupLiveVoiceEngine() {
     isLiveSpeakerOn = !isLiveSpeakerOn;
     const icon = document.getElementById("live-speaker-icon");
     if (isLiveSpeakerOn) {
+      unlockMobileAudio();
       icon.className = "fa-solid fa-volume-high text-cyan-400";
     } else {
       stopAllLiveAudio();
@@ -1761,13 +1771,9 @@ function setupLiveVoiceEngine() {
   document.getElementById("close-live-btn").onclick = () => {
     isLiveActive = false;
     isWaitingForAiReply = false;
-    if (previewAudioObj) {
-      previewAudioObj.pause();
-      previewAudioObj = null;
-    }
     stopAllLiveAudio();
     orb.classList.remove("speaking", "muted");
-    try { recognition.abort(); } catch (e) {}
+    try { if (recognition) recognition.abort(); } catch (e) {}
     document.getElementById("live-overlay").classList.add("hidden");
   };
 }
