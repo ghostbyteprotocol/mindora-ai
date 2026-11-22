@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (ElevenLabs Multilingual Human Voice & Zero Robot Fallback)
+// app.js — MinDora AI Core Engine (ElevenLabs v3 Multilingual Voice, Auto Language Detect & Bug-Free Live Engine)
 import { db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -47,11 +47,11 @@ const sharedAudioPlayer = new Audio();
 sharedAudioPlayer.preload = "auto";
 
 const VOICE_PREVIEW_SAMPLES = {
-  "9BWtsMINqrJLrRacOk9x": "হ্যালো! আমি আরিয়া। বল, আজ তোকে কীভাবে সাহায্য করতে পারি?",
-  "CwhRBWXzGAHq8TQ4Fs17": "নমস্কার, আমি রজার। একদম পরিষ্কার আর ন্যাচারাল গলায় কথা বলি।",
-  "EXAVITQu4vr4xnSDxMaL": "হ্যালো! আমি সারা, তোর পার্সোনাল এআই বন্ধু। শুরু করা যাক?",
-  "IKne3meq5aSn9XLyUdCD": "এই যে! আমি চার্লি, একদম বন্ধুর মতো আড্ডা দেওয়ার জন্য রেডি।",
-  "JBFqnCBsd6RMkjVDRZzb": "হ্যালো, আমি জর্জ। গভীর আর স্পষ্ট গলায় কথা বলি।"
+  "9BWtsMINqrJLrRacOk9x": "Hello! আমি আরিয়া, তোর পার্সোনাল এআই বন্ধু। বল, আজ কীভাবে সাহায্য করতে পারি?",
+  "CwhRBWXzGAHq8TQ4Fs17": "Hi! আমি রজার, একদম পরিষ্কার আর ন্যাচারাল গলায় কথা বলি।",
+  "EXAVITQu4vr4xnSDxMaL": "Hey there! আমি সারা। যেকোনো ভাষায় কথা বল, আমি বুঝতে পারব।",
+  "IKne3meq5aSn9XLyUdCD": "Hello! আমি চার্লি, একদম বন্ধুর মতো আড্ডা দেওয়ার জন্য রেডি।",
+  "JBFqnCBsd6RMkjVDRZzb": "Greetings! আমি জর্জ, গভীর আর স্পষ্ট গলায় কথা বলি।"
 };
 
 function unlockMobileAudio() {
@@ -824,7 +824,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. ELEVENLABS HUMAN VOICE ENGINE (ZERO ROBOT FALLBACK) ====================
+// ==================== 6. ELEVENLABS V3 MULTILINGUAL VOICE ENGINE ====================
 function stopCurrentSpeech() {
   sharedAudioPlayer.pause();
   sharedAudioPlayer.onended = null;
@@ -850,7 +850,8 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
 
   if (!cleanSpeechText) return null;
 
-  const models = ["eleven_flash_v2_5", "eleven_multilingual_v2"];
+  // Use ElevenLabs v3 first (70+ languages including Bengali & Hindi), then fallback
+  const models = ["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5"];
   for (const model_id of models) {
     try {
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -864,7 +865,7 @@ async function fetchElevenLabsAudioUrl(text, voiceId) {
           text: cleanSpeechText,
           model_id,
           voice_settings: {
-            stability: 0.45,
+            stability: 0.5, // Required valid discrete value (0.0, 0.5, 1.0) for eleven_v3
             similarity_boost: 0.78
           }
         })
@@ -903,7 +904,7 @@ async function toggleNeuralListen(text, btnEl) {
     sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else {
     stopCurrentSpeech();
-    alert("ElevenLabs API Key missing or quota reached in config.js.");
+    alert("ElevenLabs API error. Check your ElevenLabs key or quota.");
   }
 }
 
@@ -1075,7 +1076,7 @@ async function sendPromptPipeline(overrideText = null, liveVoiceCallback = null)
   try {
     if (!currentChatId) {
       const newChatRef = await addDoc(collection(db, "users", currentUser.uid, "chats"), {
-        title: (rawText || filePayload?.name || "New Chat").slice(0, 38),
+        title: (rawText.replace(/\n\n\[Voice Conversation Note:[\s\S]*\]$/, "") || filePayload?.name || "New Chat").slice(0, 38),
         pinned: false,
         locked: false,
         hidden: false,
@@ -1114,14 +1115,14 @@ async function sendPromptPipeline(overrideText = null, liveVoiceCallback = null)
     if (rawText.toLowerCase().startsWith("/imagine ")) {
       const prompt = rawText.slice(9).trim();
       await triggerImageGeneration(prompt, "1024x1024");
-      if (liveVoiceCallback) liveVoiceCallback("ছবি তৈরি হয়ে গেছে।");
+      if (liveVoiceCallback) liveVoiceCallback("Your image has been generated.");
       return;
     }
 
     autoCaptureMemory(displayUserText);
     await generateAIResponseOnly(rawText, filePayload, liveVoiceCallback);
   } catch (err) {
-    if (liveVoiceCallback) liveVoiceCallback("নেটওয়ার্কে একটু সমস্যা হচ্ছে, আবার বলো।");
+    if (liveVoiceCallback) liveVoiceCallback("Network error. Please try again.");
   }
 }
 
@@ -1227,7 +1228,7 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   if (!succeeded && !finalReply) {
     finalReply = `**Error:** ${lastApiError || "Unable to connect. Please check your API key in Settings."}`;
     textTarget.innerHTML = marked.parse(finalReply);
-    if (liveVoiceCallback) liveVoiceCallback("দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না। একটু পর আবার চেষ্টা করো।");
+    if (liveVoiceCallback) liveVoiceCallback("Sorry, I could not connect right now. Please try again.");
   }
 
   await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
@@ -1397,7 +1398,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE + ELEVENLABS V3 AUTO-LANGUAGE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -1412,7 +1413,6 @@ function setupLiveVoiceEngine() {
   const speechLangBtn = document.getElementById("live-speech-lang-btn");
   const speechLangLabel = document.getElementById("live-speech-lang-label");
 
-  // Populate Settings voice dropdown dynamically with ElevenLabs voices
   let settingsPreviewBadge = null;
   if (settingsVoiceSelect) {
     settingsVoiceSelect.innerHTML = STUDIO_VOICES.map((v, i) => `<option value="${i}">${v.label}</option>`).join("");
@@ -1423,21 +1423,31 @@ function setupLiveVoiceEngine() {
     }
   }
 
-  const SPEECH_LANGS = [
-    { code: "bn-IN", label: "বাংলা" },
-    { code: "hi-IN", label: "हिन्दी" },
-    { code: "en-IN", label: "English" }
+  // Default: Auto-Detect (adapts automatically to Bengali, Hindi, or English)
+  const SPEECH_MODES = [
+    { id: "auto", label: "Auto" },
+    { id: "bn-IN", label: "Bengali" },
+    { id: "hi-IN", label: "Hindi" },
+    { id: "en-IN", label: "English" }
   ];
-  let speechLangIdx = parseInt(localStorage.getItem("mindora_speech_lang_idx") || "0", 10) % SPEECH_LANGS.length;
-  if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
+  let speechModeIdx = 0; // Always start in Auto-Detect mode
+  let detectedRecLang = "en-IN";
+  if (speechLangLabel) speechLangLabel.textContent = SPEECH_MODES[speechModeIdx].label;
 
   let isAiSpeakingTurn = false;
   let isWaitingForAiReply = false;
+  let isMicStarting = false;
 
   const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
   studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % STUDIO_VOICES.length;
   const voiceLabelEl = document.getElementById("live-voice-label");
   if (voiceLabelEl) voiceLabelEl.textContent = STUDIO_VOICES[studioVoiceIndex].label.split(" ")[0];
+
+  function detectLanguageFromText(text) {
+    if (/[\u0980-\u09FF]/.test(text)) return "bn-IN";
+    if (/[\u0900-\u097F]/.test(text)) return "hi-IN";
+    return "en-IN";
+  }
 
   function stopAllLiveAudio() {
     isAiSpeakingTurn = false;
@@ -1457,7 +1467,7 @@ function setupLiveVoiceEngine() {
     try { if (recognition) recognition.abort(); } catch (e) {}
 
     if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Loading ${voiceName} preview...`;
-    if (isLiveActive && statusText) statusText.textContent = `${voiceName} ভয়েস প্রিভিউ লোড হচ্ছে...`;
+    if (isLiveActive && statusText) statusText.textContent = `Loading ${voiceName} voice preview...`;
 
     let mp3Url = voicePreviewCache[voiceId];
     if (!mp3Url) {
@@ -1466,7 +1476,7 @@ function setupLiveVoiceEngine() {
     }
 
     if (mp3Url) {
-      if (settingsPreviewBadge) settingsPreviewBadge.textContent = `🔊 Playing: ${voiceObj.label}`;
+      if (settingsPreviewBadge) settingsPreviewBadge.textContent = `Playing: ${voiceObj.label}`;
       if (isLiveActive && statusText) statusText.textContent = sampleText;
       setLiveTurnUI("speaking");
 
@@ -1474,13 +1484,13 @@ function setupLiveVoiceEngine() {
       sharedAudioPlayer.onended = () => {
         if (settingsPreviewBadge) settingsPreviewBadge.textContent = "";
         if (isLiveActive && !isLiveMuted) {
-          if (statusText) statusText.textContent = "শুনছি... বলো।";
-          setTimeout(safeStartMic, 400);
+          if (statusText) statusText.textContent = "Listening... Go ahead.";
+          setTimeout(safeStartMic, 450);
         }
       };
       sharedAudioPlayer.play().catch(() => {});
     } else {
-      if (settingsPreviewBadge) settingsPreviewBadge.textContent = "Check ElevenLabs API Key in config.js";
+      if (settingsPreviewBadge) settingsPreviewBadge.textContent = "Check ElevenLabs API Key or quota.";
       if (isLiveActive && !isLiveMuted) safeStartMic();
     }
   }
@@ -1497,12 +1507,11 @@ function setupLiveVoiceEngine() {
 
   if (speechLangBtn) {
     speechLangBtn.onclick = () => {
-      speechLangIdx = (speechLangIdx + 1) % SPEECH_LANGS.length;
-      localStorage.setItem("mindora_speech_lang_idx", String(speechLangIdx));
-      if (speechLangLabel) speechLangLabel.textContent = SPEECH_LANGS[speechLangIdx].label;
+      speechModeIdx = (speechModeIdx + 1) % SPEECH_MODES.length;
+      if (speechLangLabel) speechLangLabel.textContent = SPEECH_MODES[speechModeIdx].label;
       if (recognition && isLiveActive && !isLiveMuted && !isAiSpeakingTurn) {
         try { recognition.abort(); } catch (e) {}
-        setTimeout(safeStartMic, 300);
+        setTimeout(safeStartMic, 350);
       }
     };
   }
@@ -1533,13 +1542,22 @@ function setupLiveVoiceEngine() {
     }
   }
 
+  function getActiveRecognitionLang() {
+    const mode = SPEECH_MODES[speechModeIdx].id;
+    return mode === "auto" ? detectedRecLang : mode;
+  }
+
   function safeStartMic() {
-    if (!recognition || !isLiveActive || isLiveMuted || isAiSpeakingTurn || isWaitingForAiReply) return;
+    if (!recognition || !isLiveActive || isLiveMuted || isAiSpeakingTurn || isWaitingForAiReply || isMicStarting) return;
+    isMicStarting = true;
     try {
-      recognition.lang = SPEECH_LANGS[speechLangIdx].code;
+      recognition.lang = getActiveRecognitionLang();
       recognition.start();
       setLiveTurnUI("listening");
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      setTimeout(() => { isMicStarting = false; }, 300);
+    }
   }
 
   if (recognition) {
@@ -1556,13 +1574,15 @@ function setupLiveVoiceEngine() {
       if (isLiveActive) {
         isWaitingForAiReply = true;
         try { recognition.abort(); } catch (e) {}
-        if (userCaption) userCaption.textContent = `তুমি: "${spokenText}"`;
-        if (statusText) statusText.textContent = "ভাবছি...";
+        if (userCaption) userCaption.textContent = `You: "${spokenText}"`;
+        if (statusText) statusText.textContent = "Thinking...";
         setLiveTurnUI("thinking");
 
-        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Reply naturally in 2 short conversational sentences without markdown symbols, bullet points, or emojis, as this will be spoken aloud.]`;
+        const livePrompt = `${spokenText}\n\n[Voice Conversation Note: Auto-detect the language the user spoke (Bengali, Hindi, or English — even if transcribed phonetically in Latin letters) and reply naturally in that exact language's native script in 2 short conversational sentences without markdown symbols, bullet points, or emojis.]`;
         sendPromptPipeline(livePrompt, (aiReply) => {
           isWaitingForAiReply = false;
+          // Auto-update recognition language for next turn based on AI's matched language
+          detectedRecLang = detectLanguageFromText(aiReply);
           speakInLiveMode(aiReply);
         });
       } else {
@@ -1574,13 +1594,13 @@ function setupLiveVoiceEngine() {
 
     recognition.onerror = () => {
       if (isLiveActive && !isLiveMuted && !isAiSpeakingTurn && !isWaitingForAiReply) {
-        setTimeout(safeStartMic, 450);
+        setTimeout(safeStartMic, 500);
       }
     };
 
     recognition.onend = () => {
       if (isLiveActive && !isLiveMuted && !isAiSpeakingTurn && !isWaitingForAiReply) {
-        setTimeout(safeStartMic, 400);
+        setTimeout(safeStartMic, 450);
       }
     };
   }
@@ -1592,7 +1612,7 @@ function setupLiveVoiceEngine() {
       if (isLiveMuted) {
         setLiveTurnUI("muted");
       } else {
-        if (statusText) statusText.textContent = "শুনছি... বলো।";
+        if (statusText) statusText.textContent = "Listening... Go ahead.";
         setTimeout(safeStartMic, 450);
       }
     };
@@ -1633,14 +1653,14 @@ function setupLiveVoiceEngine() {
     interruptBtn.onclick = () => {
       stopAllLiveAudio();
       isWaitingForAiReply = false;
-      if (statusText) statusText.textContent = "শুনছি...";
+      if (statusText) statusText.textContent = "Listening...";
       safeStartMic();
     };
   }
 
   document.getElementById("mic-btn").onclick = () => {
     if (!recognition) return alert("Voice recognition is not supported on this browser.");
-    recognition.lang = SPEECH_LANGS[speechLangIdx].code;
+    recognition.lang = getActiveRecognitionLang();
     recognition.start();
   };
 
@@ -1653,7 +1673,7 @@ function setupLiveVoiceEngine() {
     isLiveMuted = false;
     isWaitingForAiReply = false;
     if (userCaption) userCaption.textContent = "";
-    if (statusText) statusText.textContent = "শুনছি... বাংলা, হিন্দি বা ইংরেজিতে কথা বলো।";
+    if (statusText) statusText.textContent = "Listening... Speak naturally in any language.";
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
     document.getElementById("live-overlay").classList.remove("hidden");
     safeStartMic();
@@ -1669,7 +1689,7 @@ function setupLiveVoiceEngine() {
       try { if (recognition) recognition.abort(); } catch (e) {}
     } else {
       icon.className = "fa-solid fa-microphone";
-      if (statusText) statusText.textContent = "শুনছি...";
+      if (statusText) statusText.textContent = "Listening...";
       safeStartMic();
     }
   };
