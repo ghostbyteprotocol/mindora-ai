@@ -1,0 +1,63 @@
+name: Build Auto-Updating MinDora Release APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    env:
+      WEB_URL: "https://ghostbyteprotocol.github.io/mindora-ai/"
+      APP_NAME: "MinDora AI"
+      PKG_ID: "com.mindora.ai.app"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node & Java
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Create Capacitor Live-Sync Wrapper
+        run: |
+          mkdir -p android-wrapper/www && cd android-wrapper
+          echo "<h1>Loading MinDora AI...</h1>" > www/index.html
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "$PKG_ID",
+            "appName": "$APP_NAME",
+            "webDir": "www",
+            "server": {
+              "url": "$WEB_URL",
+              "cleartext": false
+            }
+          }
+          EOF
+          npx cap add android
+
+      - name: Add Mic, Audio & Fullscreen Permissions
+        run: |
+          MANIFEST="android-wrapper/android/app/src/main/AndroidManifest.xml"
+          sed -i 's/<uses-permission android:name="android.permission.INTERNET" \/>/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO" \/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" \/>/' $MANIFEST
+
+      - name: Generate Release Keystore & Build Signed Release APK
+        run: |
+          cd android-wrapper/android/app
+          keytool -genkey -v -keystore mindora-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mindora -storepass mindora123 -keypass mindora123 -dname "CN=MinDora AI, OU=CSE, O=MinDora, L=Purulia, S=WB, C=IN"
+          cd ..
+          ./gradlew assembleRelease
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks app/mindora-release.jks --ks-pass pass:mindora123 --key-pass pass:mindora123 --out ../../MinDora-AI-Release.apk app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Upload Signed Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MinDora-AI-Release-APK
+          path: MinDora-AI-Release.apk
