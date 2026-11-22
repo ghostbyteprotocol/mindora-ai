@@ -1,606 +1,759 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Ayan AI — Personal Assistant</title>
+  <title>MinDora AI — Intelligent Multimodal Workspace</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <style>
-    body { background-color: #0b0f19; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
-    .glass { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
-    .chat-scroll::-webkit-scrollbar { width: 5px; }
-    .chat-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-    .prose pre { background: #1e293b; padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; }
-    .prose code { color: #38bdf8; }
-    .pulse-ring { animation: pulse 1.5s infinite; }
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-      70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body class="bg-cyber-grid selection:bg-blue-500/30 selection:text-cyan-200">
 
-  <!-- AUTH SCREEN -->
-  <div id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0b0f19]">
-    <div class="glass w-full max-w-md rounded-2xl p-6 shadow-2xl">
-      <div class="text-center mb-6">
-        <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-2xl font-bold text-white shadow-lg mb-3">
+  <!-- ==================== 1. AUTHENTICATION SCREEN ==================== -->
+  <section id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#05070E]/95">
+    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[460px] h-[460px] bg-blue-600/15 rounded-full blur-[120px] pointer-events-none"></div>
+
+    <div class="glass-card w-full max-w-[420px] rounded-3xl p-7 relative z-10 my-auto">
+      <!-- Brand Logo -->
+      <div class="flex flex-col items-center text-center mb-6">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white text-xl shadow-lg shadow-blue-500/25 mb-3">
           <i class="fa-solid fa-sparkles"></i>
         </div>
-        <h1 class="text-2xl font-bold text-white">Ayan AI</h1>
-        <p class="text-xs text-slate-400 mt-1">তোর পার্সোনাল AI অ্যাসিস্ট্যান্ট</p>
+        <h1 data-i18n="welcome_title" class="text-2xl font-bold tracking-tight text-white">Welcome to MinDora AI</h1>
+        <p data-i18n="welcome_sub" class="text-xs text-slate-400 mt-1">Multimodal Intelligence • Encrypted Vault • Live Voice</p>
       </div>
 
-      <div id="auth-error" class="hidden mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 text-xs"></div>
-      <div id="auth-msg" class="hidden mb-4 p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs"></div>
+      <!-- Alert Banners -->
+      <div id="auth-error" class="hidden mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
+        <i class="fa-solid fa-circle-exclamation mt-0.5"></i>
+        <span id="auth-error-text"></span>
+      </div>
+      <div id="auth-success" class="hidden mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2">
+        <i class="fa-solid fa-circle-check mt-0.5"></i>
+        <span id="auth-success-text"></span>
+      </div>
 
-      <!-- Email Form -->
-      <form id="email-auth-form" class="space-y-3">
-        <div id="name-field" class="hidden">
-          <input type="text" id="auth-name" placeholder="তোর নাম" class="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-sm focus:outline-none focus:border-blue-500" />
-        </div>
-        <input type="email" id="auth-email" required placeholder="ইমেইল অ্যাড্রেস" class="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-sm focus:outline-none focus:border-blue-500" />
-        <input type="password" id="auth-password" required placeholder="পাসওয়ার্ড" class="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-sm focus:outline-none focus:border-blue-500" />
-        
-        <div class="flex justify-between items-center text-xs">
-          <button type="button" id="toggle-auth-mode" class="text-blue-400 hover:underline">নতুন অ্যাকাউন্ট খুলবি? Sign Up</button>
-          <button type="button" id="forgot-pass-btn" class="text-slate-400 hover:text-white">Forgot Password?</button>
-        </div>
+      <!-- Social Auth (Google & Apple Only - No Phone) -->
+      <div class="space-y-2.5 mb-5">
+        <button type="button" id="google-login-btn" class="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs flex items-center justify-center gap-2.5 transition shadow">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-4 h-4" alt="Google" />
+          <span data-i18n="continue_google">Continue with Google</span>
+        </button>
+        <button type="button" id="apple-login-btn" class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 font-semibold text-xs flex items-center justify-center gap-2.5 transition">
+          <i class="fa-brands fa-apple text-sm"></i>
+          <span data-i18n="continue_apple">Continue with Apple</span>
+        </button>
+      </div>
 
-        <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold text-white text-sm transition">
-          Login কর
+      <!-- Divider -->
+      <div class="relative my-4 flex items-center justify-center">
+        <div class="border-t border-slate-800 w-full"></div>
+        <span class="bg-[#0D1221] px-3 text-[10px] uppercase tracking-wider text-slate-500">Email & Username</span>
+        <div class="border-t border-slate-800 w-full"></div>
+      </div>
+
+      <!-- Sign In / Sign Up Switcher -->
+      <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 mb-4 text-xs font-medium">
+        <button type="button" id="tab-signin" data-i18n="tab_signin" class="py-2 rounded-lg bg-blue-600 text-white shadow transition">Sign In</button>
+        <button type="button" id="tab-signup" data-i18n="tab_signup" class="py-2 rounded-lg text-slate-400 hover:text-white transition">Sign Up</button>
+      </div>
+
+      <!-- Email / Username Sign In Form -->
+      <form id="signin-form" class="space-y-3.5">
+        <div>
+          <label data-i18n="identifier_label" class="block text-[11px] font-medium text-slate-400 mb-1">Username or Email</label>
+          <input type="text" id="signin-identifier" required placeholder="ayan_dev or you@email.com"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition" />
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label data-i18n="password_label" class="block text-[11px] font-medium text-slate-400">Password</label>
+            <button type="button" id="forgot-password-btn" data-i18n="forgot_password" class="text-[11px] text-blue-400 hover:text-blue-300">Forgot password?</button>
+          </div>
+          <input type="password" id="signin-password" required placeholder="••••••••"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition" />
+        </div>
+        <button type="submit" id="signin-submit-btn" data-i18n="signin_btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/20 transition">
+          Sign In
         </button>
       </form>
 
-      <div class="relative my-5 text-center">
-        <div class="border-t border-slate-800"></div>
-        <span class="bg-[#111827] px-3 text-xs text-slate-500 relative -top-2.5">অথবা</span>
-      </div>
+      <!-- Email Sign Up Form -->
+      <form id="signup-form" class="hidden space-y-3">
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label data-i18n="fullname_label" class="block text-[11px] font-medium text-slate-400 mb-1">Full Name</label>
+            <input type="text" id="signup-name" required placeholder="Ayan Karmakar"
+              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label data-i18n="username_label" class="block text-[11px] font-medium text-slate-400 mb-1">Username</label>
+            <input type="text" id="signup-username" required placeholder="ayan_dev"
+              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        <div>
+          <label data-i18n="email_label" class="block text-[11px] font-medium text-slate-400 mb-1">Email Address</label>
+          <input type="email" id="signup-email" required placeholder="you@example.com"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label data-i18n="password_label" class="block text-[11px] font-medium text-slate-400 mb-1">Password</label>
+          <input type="password" id="signup-password" required minlength="6" placeholder="Min. 6 characters"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+        </div>
+        <button type="submit" id="signup-submit-btn" data-i18n="signup_btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/20 transition">
+          Create Account
+        </button>
+      </form>
+    </div>
+  </section>
 
-      <!-- Social Auth (Google & Apple) -->
-      <div class="space-y-2.5">
-        <button id="google-login-btn" class="w-full py-2.5 px-4 rounded-xl bg-white text-slate-900 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-slate-100 transition">
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-4 h-4" alt="G" />
-          Continue with Google
+  <!-- ==================== 2. EMAIL VERIFICATION SCREEN ==================== -->
+  <section id="verify-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#05070E]/95">
+    <div class="glass-card w-full max-w-md rounded-3xl p-7 text-center space-y-4">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-2xl text-cyan-400">
+        <i class="fa-solid fa-envelope-circle-check"></i>
+      </div>
+      <h2 data-i18n="verify_title" class="text-xl font-bold text-white">Verify Your Email</h2>
+      <p data-i18n="verify_desc" class="text-xs text-slate-400 leading-relaxed">
+        We sent a verification link to your inbox. Click the link, then tap below to continue.
+      </p>
+      <p id="verify-email-display" class="text-xs font-mono text-cyan-300 bg-slate-900/90 py-2 px-3 rounded-xl border border-slate-800"></p>
+      <div id="verify-status-msg" class="hidden text-xs text-amber-300"></div>
+      <div class="space-y-2.5 pt-2">
+        <button type="button" id="check-verified-btn" data-i18n="ive_verified" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition">
+          I've Verified My Email
         </button>
-        <button id="apple-login-btn" class="w-full py-2.5 px-4 rounded-xl bg-slate-800 text-white border border-slate-700 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-slate-700 transition">
-          <i class="fa-brands fa-apple text-base"></i>
-          Continue with Apple
-        </button>
+        <div class="flex gap-2">
+          <button type="button" id="resend-verify-btn" data-i18n="resend_email" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+            Resend Link
+          </button>
+          <button type="button" id="verify-logout-btn" class="flex-1 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition">
+            Change Email
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- MAIN APP SCREEN -->
-  <div id="app-screen" class="hidden flex-1 flex h-full overflow-hidden">
-    
-    <!-- SIDEBAR (Chats + Memory) -->
-    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-72 glass border-r border-slate-800 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200">
-      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white"><i class="fa-solid fa-robot"></i></span>
-          <span class="font-bold text-white">Ayan AI</span>
-        </div>
-        <button id="close-sidebar" class="md:hidden text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+  <!-- ==================== 3. PROFILE ONBOARDING SCREEN ==================== -->
+  <section id="onboarding-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#05070E]/95">
+    <div class="glass-card w-full max-w-md rounded-3xl p-7 my-auto">
+      <div class="text-center mb-5">
+        <h2 data-i18n="onboard_title" class="text-xl font-bold text-white">Complete Your Profile</h2>
+        <p data-i18n="onboard_sub" class="text-xs text-slate-400 mt-1">Set up your identity to personalize MinDora AI</p>
       </div>
 
-      <div class="p-3">
-        <button id="new-chat-btn" class="w-full py-2.5 px-3 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-300 hover:bg-blue-600/30 text-sm font-medium flex items-center gap-2 transition">
-          <i class="fa-solid fa-plus"></i> নতুন চ্যাট
+      <div id="onboard-error" class="hidden mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs"></div>
+
+      <form id="onboarding-form" class="space-y-3.5">
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label data-i18n="fullname_label" class="block text-[11px] font-medium text-slate-400 mb-1">Full Name</label>
+            <input type="text" id="onboard-name" required placeholder="Ayan Karmakar"
+              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label data-i18n="username_label" class="block text-[11px] font-medium text-slate-400 mb-1">Username</label>
+            <input type="text" id="onboard-username" required placeholder="ayan_dev"
+              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label data-i18n="age_label" class="block text-[11px] font-medium text-slate-400 mb-1">Age</label>
+            <input type="number" id="onboard-age" required min="10" max="100" placeholder="19"
+              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label data-i18n="gender_label" class="block text-[11px] font-medium text-slate-400 mb-1">Gender</label>
+            <select id="onboard-gender" required
+              class="w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500">
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Non-binary">Non-binary</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="onboard-password-wrap">
+          <label data-i18n="set_pass_label" class="block text-[11px] font-medium text-slate-400 mb-1">Set Account Password (Optional for Google/Apple)</label>
+          <input type="password" id="onboard-password" minlength="6" placeholder="Min. 6 characters"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-white focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <button type="submit" id="onboard-submit-btn" data-i18n="finish_setup" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-semibold text-sm shadow-lg transition">
+          Enter MinDora AI
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ==================== 4. MAIN WORKSPACE ==================== -->
+  <div id="app-screen" class="hidden flex-1 flex h-full overflow-hidden relative">
+
+    <!-- Mobile Backdrop for Swipeable Sidebar -->
+    <div id="sidebar-backdrop" class="hidden fixed inset-0 z-30 sidebar-backdrop md:hidden"></div>
+
+    <!-- LEFT DRAWER SIDEBAR (Swipe Right to Open) -->
+    <aside id="sidebar" class="sidebar-drawer fixed md:static inset-y-0 left-0 z-40 w-72 glass-panel border-r border-slate-800/80 flex flex-col transform -translate-x-full md:translate-x-0">
+      <!-- Sidebar Header -->
+      <div class="h-14 px-4 border-b border-slate-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white text-sm shadow">
+            <i class="fa-solid fa-sparkles"></i>
+          </div>
+          <div>
+            <span class="font-bold text-sm text-white tracking-tight block leading-none">MinDora AI</span>
+            <span class="text-[10px] text-cyan-400 font-medium">PRO WORKSPACE</span>
+          </div>
+        </div>
+        <button id="close-sidebar" class="md:hidden text-slate-400 hover:text-white p-1.5">
+          <i class="fa-solid fa-xmark text-base"></i>
         </button>
       </div>
 
-      <!-- Chat History List -->
-      <div class="flex-1 overflow-y-auto px-3 space-y-1 chat-scroll" id="chat-list"></div>
+      <!-- New Chat & Search -->
+      <div class="p-3 space-y-2.5">
+        <button id="new-chat-btn" class="w-full py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-between shadow-md shadow-blue-600/20 transition">
+          <span class="flex items-center gap-2"><i class="fa-solid fa-plus"></i> <span data-i18n="new_chat">New Chat</span></span>
+          <i class="fa-solid fa-pen-to-square text-[11px] opacity-80"></i>
+        </button>
 
-      <!-- Memory Box -->
-      <div class="p-3 border-t border-slate-800 bg-slate-900/50">
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="text-xs font-semibold text-cyan-400"><i class="fa-solid fa-brain mr-1"></i> AI Memory</span>
-          <button id="save-memory-btn" class="text-[11px] bg-cyan-600/30 text-cyan-300 px-2 py-0.5 rounded hover:bg-cyan-600/50">Save</button>
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-[11px]"></i>
+          <input type="text" id="chat-search-input" data-i18n-placeholder="search_chats" placeholder="Search conversations..."
+            class="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
         </div>
-        <textarea id="memory-input" rows="3" placeholder="তোর ব্যাপারে যা মনে রাখতে চাস এখানে লেখ (যেমন: আমি অয়ন, CSE স্টুডেন্ট, বাংলায় কথা বলতে ভালোবাসি)..." class="w-full p-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"></textarea>
       </div>
 
-      <!-- User Profile & Logout -->
-      <div class="p-3 border-t border-slate-800 flex items-center justify-between">
-        <div class="truncate pr-2">
-          <p id="user-display-name" class="text-xs font-semibold text-white truncate">User</p>
-          <p id="user-display-email" class="text-[10px] text-slate-400 truncate">email</p>
+      <!-- Chat List Header -->
+      <div class="px-4 py-1 flex items-center justify-between">
+        <span data-i18n="recent_chats" class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Recent Chats</span>
+      </div>
+
+      <!-- Chat Items Container -->
+      <div id="chat-list" class="flex-1 overflow-y-auto px-3 space-y-1 custom-scroll"></div>
+
+      <!-- Profile Footer (Tap = Full System Settings | Hold 5s = Hidden Vault) -->
+      <div class="p-3 border-t border-slate-800/80 bg-slate-950/50">
+        <div id="profile-hold-btn" class="profile-hold-target flex items-center justify-between p-2 rounded-2xl hover:bg-slate-900/90 border border-transparent hover:border-slate-800 cursor-pointer transition" title="Tap for Settings • Hold 5s for Hidden Vault">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="relative shrink-0">
+              <div class="profile-hold-ring"></div>
+              <img id="sidebar-avatar-img" class="hidden w-9 h-9 rounded-full object-cover border border-slate-700" alt="Profile" />
+              <div id="sidebar-avatar-initial" class="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-xs font-bold text-white">
+                A
+              </div>
+            </div>
+            <div class="truncate">
+              <p id="sidebar-fullname" class="text-xs font-semibold text-white truncate">Ayan</p>
+              <p id="sidebar-username" class="text-[10px] text-slate-400 truncate">@ayan_dev</p>
+            </div>
+          </div>
+          <i class="fa-solid fa-sliders text-slate-400 text-xs pr-1"></i>
         </div>
-        <button id="logout-btn" title="Logout" class="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs">
-          <i class="fa-solid fa-right-from-bracket"></i>
-        </button>
       </div>
     </aside>
 
-    <!-- CHAT AREA -->
-    <main class="flex-1 flex flex-col h-full bg-[#0b0f19] relative">
-      <!-- Top Header -->
-      <header class="h-14 glass border-b border-slate-800 px-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <button id="open-sidebar" class="md:hidden text-slate-300 hover:text-white"><i class="fa-solid fa-bars text-lg"></i></button>
-          <select id="model-select" class="bg-slate-900 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none">
-            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Latest)</option>
-            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (High Limit)</option>
-            <option value="gemini-4-hydrogen">Gemini 4 Hydrogen</option>
+    <!-- MAIN CHAT WORKSPACE -->
+    <main id="main-touch-area" class="flex-1 flex flex-col h-full relative min-w-0">
+
+      <!-- Top Header with Centered MinDora Model Selector -->
+      <header class="h-14 glass-panel border-b border-slate-800/80 px-3 md:px-5 flex items-center justify-between z-20 gap-2">
+        <!-- Left: Sidebar Toggle -->
+        <div class="flex items-center gap-2">
+          <button id="open-sidebar" class="md:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/70 transition">
+            <i class="fa-solid fa-bars-staggered text-base"></i>
+          </button>
+        </div>
+
+        <!-- Center: MinDora Model Switcher -->
+        <div class="flex items-center gap-2 bg-slate-900/95 border border-slate-700/80 rounded-full px-3.5 py-1.5 shadow-inner">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <select id="model-select" class="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer">
+            <option value="auto" class="bg-slate-900">MinDora Auto</option>
+            <option value="mindora-1" class="bg-slate-900">MinDora 1</option>
+            <option value="mindora-2" class="bg-slate-900">MinDora 2</option>
+            <option value="mindora-3" class="bg-slate-900">MinDora 3</option>
           </select>
         </div>
 
-        <button id="live-talk-btn" class="px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow hover:opacity-90 transition">
-          <i class="fa-solid fa-headset"></i> Live Talk
-        </button>
+        <!-- Right: Dedicated Create Image Button -->
+        <div class="flex items-center gap-1.5">
+          <button id="open-imagine-modal-btn" class="px-3 py-1.5 rounded-full bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/35 text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span data-i18n="create_image" class="hidden sm:inline">Create Image</span>
+          </button>
+        </div>
       </header>
 
-      <!-- Messages Container -->
-      <div id="messages-box" class="flex-1 overflow-y-auto p-4 space-y-4 chat-scroll">
-        <div class="text-center text-slate-500 text-xs my-10">
-          <i class="fa-solid fa-wand-magic-sparkles text-2xl text-blue-500 mb-2 block"></i>
-          কী সাহায্য লাগবে বল ভাই? ছবি পাঠা, ইউটিউব লিংক দে, বা লাইভ কথা বল!
+      <!-- 1-Tap Quick Mode Pills -->
+      <div class="px-3 py-2 border-b border-slate-800/40 bg-[#070A13]/80 flex items-center justify-center gap-1.5 overflow-x-auto custom-scroll">
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-blue-600/20 text-cyan-300 border border-blue-500/40 transition" data-mode="default">
+          <i class="fa-solid fa-sparkles mr-1"></i>Default
+        </button>
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white transition" data-mode="coder">
+          <i class="fa-solid fa-code mr-1"></i>Coder
+        </button>
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white transition" data-mode="study">
+          <i class="fa-solid fa-graduation-cap mr-1"></i>Study
+        </button>
+        <button type="button" class="mode-pill px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white transition" data-mode="creative">
+          <i class="fa-solid fa-palette mr-1"></i>Creative
+        </button>
+      </div>
+
+      <!-- Messages Viewport -->
+      <div id="messages-box" class="flex-1 overflow-y-auto p-3.5 md:p-6 space-y-5 custom-scroll">
+        <div id="welcome-hero" class="max-w-xl mx-auto my-8 text-center space-y-5">
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600/25 to-cyan-400/25 border border-cyan-500/30 flex items-center justify-center text-3xl text-cyan-400 shadow-lg">
+            <i class="fa-solid fa-sparkles"></i>
+          </div>
+          <div>
+            <h2 data-i18n="hero_title" class="text-xl md:text-2xl font-bold text-white">How can MinDora help you today?</h2>
+            <p data-i18n="hero_sub" class="text-xs text-slate-400 mt-1.5">Upload files, generate HD images, preview live code, or talk hands-free.</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
+            <button type="button" class="quick-prompt glass-panel p-3.5 rounded-2xl hover:border-cyan-500/40 transition" data-prompt="Build a modern animated neon login card using single-file HTML and CSS.">
+              <div class="text-cyan-400 text-xs font-semibold mb-1"><i class="fa-solid fa-play mr-1.5"></i>Live Code Preview</div>
+              <p class="text-[11px] text-slate-400">Build an animated neon login card & run it live</p>
+            </button>
+            <button type="button" class="quick-prompt glass-panel p-3.5 rounded-2xl hover:border-purple-500/40 transition" data-prompt="/imagine Ultra-detailed futuristic AI robot studio, cinematic lighting, 8k">
+              <div class="text-purple-400 text-xs font-semibold mb-1"><i class="fa-solid fa-image mr-1.5"></i>HD Image Studio</div>
+              <p class="text-[11px] text-slate-400">Generate a futuristic AI studio artwork</p>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Attachment Preview -->
-      <div id="attachment-preview" class="hidden px-4 py-2 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between">
-        <div class="flex items-center gap-2 text-xs text-cyan-300">
-          <img id="preview-img" class="hidden w-10 h-10 object-cover rounded" />
-          <span id="preview-text">File attached</span>
+      <!-- File Attachment Preview Strip -->
+      <div id="attachment-preview" class="hidden px-4 py-2 bg-slate-900/95 border-t border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3 min-w-0">
+          <img id="attachment-thumb" class="hidden w-10 h-10 object-cover rounded-lg border border-slate-700" />
+          <div id="attachment-file-icon" class="hidden w-10 h-10 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <i class="fa-solid fa-file-lines"></i>
+          </div>
+          <div class="truncate">
+            <p id="attachment-name" class="text-xs font-medium text-white truncate">document.pdf</p>
+            <p id="attachment-type" class="text-[10px] text-cyan-400">Attached</p>
+          </div>
         </div>
-        <button id="clear-attachment" class="text-red-400 text-xs hover:underline">Remove</button>
+        <button type="button" id="clear-attachment-btn" class="px-2.5 py-1 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs shrink-0">
+          Remove
+        </button>
       </div>
 
-      <!-- Input Bar -->
-      <div class="p-3 glass border-t border-slate-800">
-        <div class="max-w-3xl mx-auto flex items-end gap-2">
-          <!-- Image Upload -->
-          <label class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer transition" title="ছবি পাঠা">
-            <i class="fa-solid fa-image"></i>
-            <input type="file" id="image-input" accept="image/*" class="hidden" />
-          </label>
+      <!-- Bottom Input Dock -->
+      <div class="p-2.5 md:p-4 glass-panel border-t border-slate-800/80">
+        <div class="max-w-3xl mx-auto flex items-end gap-1.5">
+          <!-- Main Input Pill -->
+          <div class="flex-1 flex items-end gap-1 bg-slate-950/95 border border-slate-800 focus-within:border-blue-500/70 rounded-2xl p-1.5 shadow-xl min-w-0">
+            <!-- Upload All Files Except Video -->
+            <label class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 cursor-pointer transition shrink-0" title="Upload Image, PDF, Audio, or Code (No Video)">
+              <i class="fa-solid fa-paperclip text-sm"></i>
+              <input type="file" id="file-input" accept="image/*,application/pdf,audio/*,.txt,.csv,.json,.js,.html,.css,.py,.java,.c,.cpp,.md" class="hidden" />
+            </label>
 
-          <!-- Generate Image Quick Button -->
-          <button id="gen-img-mode-btn" title="ছবি তৈরি কর" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-400 transition">
-            <i class="fa-solid fa-palette"></i>
+            <!-- Magic Prompt Enhancer -->
+            <button type="button" id="enhance-prompt-btn" title="Enhance Prompt" class="p-2 rounded-xl text-amber-400 hover:bg-amber-500/15 transition shrink-0">
+              <i class="fa-solid fa-wand-sparkles text-xs"></i>
+            </button>
+
+            <!-- Textarea -->
+            <textarea id="chat-input" rows="1" data-i18n-placeholder="input_placeholder" placeholder="Message MinDora AI or /imagine..."
+              class="flex-1 min-w-0 bg-transparent py-2 px-1 text-sm text-white placeholder-slate-500 focus:outline-none resize-none max-h-32 custom-scroll"></textarea>
+
+            <!-- Send / Stop Toggle Button (Right side of Chat Box) -->
+            <button type="button" id="send-stop-btn" title="Send / Stop" class="p-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow transition shrink-0">
+              <i id="send-stop-icon" class="fa-solid fa-arrow-up"></i>
+            </button>
+          </div>
+
+          <!-- Mic Dictation Button (Right of Send) -->
+          <button type="button" id="mic-btn" title="Voice Input" class="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition shrink-0">
+            <i class="fa-solid fa-microphone text-sm"></i>
           </button>
 
-          <textarea id="chat-input" rows="1" placeholder="এখানে লেখ বা YouTube লিংক পেস্ট কর..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 resize-none max-h-32"></textarea>
-
-          <!-- Mic Button -->
-          <button id="mic-btn" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="ভয়েস টাইপিং">
-            <i class="fa-solid fa-microphone"></i>
-          </button>
-
-          <!-- Send Button -->
-          <button id="send-btn" class="p-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition">
-            <i class="fa-solid fa-paper-plane"></i>
+          <!-- Live Talk Button (Right of Mic) -->
+          <button type="button" id="live-talk-btn" title="Live Voice Conversation" class="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-600/20 transition shrink-0">
+            <i class="fa-solid fa-waveform-lines text-sm"></i>
           </button>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- LIVE VOICE TALK OVERLAY -->
-  <div id="live-overlay" class="hidden fixed inset-0 z-50 bg-[#0b0f19]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
-    <div id="live-orb" class="w-28 h-28 rounded-full bg-gradient-to-tr from-blue-600 via-cyan-400 to-emerald-400 flex items-center justify-center text-4xl text-white shadow-2xl mb-6 pulse-ring">
-      <i class="fa-solid fa-waveform-lines"></i>
-    </div>
-    <h2 class="text-xl font-bold text-white mb-2">Live Voice Mode</h2>
-    <p id="live-status" class="text-sm text-cyan-300 max-w-md mb-8">শুনছি... কথা বল ভাই</p>
-    <button id="close-live-btn" class="px-6 py-3 rounded-full bg-red-600 hover:bg-red-500 text-white font-semibold text-sm shadow-lg">
-      <i class="fa-solid fa-phone-slash mr-2"></i> কথা শেষ কর
+  <!-- ==================== 5. CHAT CONTEXT MENU (Rename, Delete, Pin, Hide, Lock) ==================== -->
+  <div id="chat-context-menu" class="hidden fixed z-50 w-44 rounded-2xl p-1.5 context-menu text-xs">
+    <button type="button" id="ctx-pin-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5">
+      <i class="fa-solid fa-thumbtack text-cyan-400 w-3.5"></i><span>Pin / Unpin</span>
+    </button>
+    <button type="button" id="ctx-rename-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5">
+      <i class="fa-solid fa-pen text-blue-400 w-3.5"></i><span>Rename</span>
+    </button>
+    <button type="button" id="ctx-lock-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5">
+      <i class="fa-solid fa-lock text-amber-400 w-3.5"></i><span>Lock / Unlock</span>
+    </button>
+    <button type="button" id="ctx-hide-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5">
+      <i class="fa-solid fa-eye-slash text-purple-400 w-3.5"></i><span>Hide Chat</span>
+    </button>
+    <button type="button" id="ctx-export-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5">
+      <i class="fa-solid fa-download text-emerald-400 w-3.5"></i><span>Export .txt</span>
+    </button>
+    <div class="border-t border-slate-800 my-1"></div>
+    <button type="button" id="ctx-delete-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-red-500/15 text-red-400 flex items-center gap-2.5">
+      <i class="fa-solid fa-trash-can w-3.5"></i><span>Delete</span>
     </button>
   </div>
 
-  <!-- FIREBASE & APP LOGIC -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { 
-      getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
-      sendPasswordResetEmail, GoogleAuthProvider, OAuthProvider, signInWithPopup, signOut, updateProfile 
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { 
-      getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp 
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-    // Firebase Config
-    const firebaseConfig = {
-      apiKey: "AIzaSyAQSNDMA1JLHll5mMjSwXDSa0cAmjw8Bo4",
-      authDomain: "my-website-login-10b06.firebaseapp.com",
-      projectId: "my-website-login-10b06",
-      storageBucket: "my-website-login-10b06.firebasestorage.app",
-      messagingSenderId: "1058420080529",
-      appId: "1:1058420080529:web:1440b3f78f8853268b2430",
-      measurementId: "G-WCV8VCP27D"
-    };
-
-    // Gemini API Key
-    const GEMINI_API_KEY = "AQ.Ab8RN6Ip8KhGfIgkqUmyRdDWaMMH2PGYL5xMCGaVPa_82CLhzg";
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    let currentUser = null;
-    let currentChatId = null;
-    let chatHistory = [];
-    let userMemory = "";
-    let attachedImageBase64 = null;
-    let attachedImageMime = null;
-    let isSignUp = false;
-    let isLiveMode = false;
-
-    // DOM Elements
-    const authScreen = document.getElementById("auth-screen");
-    const appScreen = document.getElementById("app-screen");
-    const authError = document.getElementById("auth-error");
-    const authMsg = document.getElementById("auth-msg");
-    const messagesBox = document.getElementById("messages-box");
-    const chatInput = document.getElementById("chat-input");
-
-    // Toggle Login / Sign Up
-    document.getElementById("toggle-auth-mode").onclick = () => {
-      isSignUp = !isSignUp;
-      document.getElementById("name-field").classList.toggle("hidden", !isSignUp);
-      document.getElementById("auth-submit-btn").textContent = isSignUp ? "Sign Up কর" : "Login কর";
-      document.getElementById("toggle-auth-mode").textContent = isSignUp ? "আগে থেকেই অ্যাকাউন্ট আছে? Login" : "নতুন অ্যাকাউন্ট খুলবি? Sign Up";
-    };
-
-    // Email Auth Submit
-    document.getElementById("email-auth-form").onsubmit = async (e) => {
-      e.preventDefault();
-      authError.classList.add("hidden");
-      const email = document.getElementById("auth-email").value.trim();
-      const pass = document.getElementById("auth-password").value;
-      const name = document.getElementById("auth-name").value.trim();
-      try {
-        if (isSignUp) {
-          const cred = await createUserWithEmailAndPassword(auth, email, pass);
-          if (name) await updateProfile(cred.user, { displayName: name });
-        } else {
-          await signInWithEmailAndPassword(auth, email, pass);
-        }
-      } catch (err) {
-        authError.textContent = err.message;
-        authError.classList.remove("hidden");
-      }
-    };
-
-    // Forgot Password
-    document.getElementById("forgot-pass-btn").onclick = async () => {
-      const email = document.getElementById("auth-email").value.trim();
-      if (!email) {
-        authError.textContent = "আগে ইমেইল বক্সে তোর ইমেইলটা লেখ!";
-        authError.classList.remove("hidden");
-        return;
-      }
-      try {
-        await sendPasswordResetEmail(auth, email);
-        authMsg.textContent = "পাসওয়ার্ড রিসেট লিংক তোর ইমেইলে পাঠানো হয়েছে!";
-        authMsg.classList.remove("hidden");
-      } catch (err) {
-        authError.textContent = err.message;
-        authError.classList.remove("hidden");
-      }
-    };
-
-    // Google Login
-    document.getElementById("google-login-btn").onclick = async () => {
-      try {
-        await signInWithPopup(auth, new GoogleAuthProvider());
-      } catch (err) {
-        authError.textContent = err.message;
-        authError.classList.remove("hidden");
-      }
-    };
-
-    // Apple Login
-    document.getElementById("apple-login-btn").onclick = async () => {
-      try {
-        await signInWithPopup(auth, new OAuthProvider("apple.com"));
-      } catch (err) {
-        authError.textContent = "Apple Login Error: " + err.message;
-        authError.classList.remove("hidden");
-      }
-    };
-
-    // Logout
-    document.getElementById("logout-btn").onclick = () => signOut(auth);
-
-    // Sidebar Mobile Toggle
-    document.getElementById("open-sidebar").onclick = () => document.getElementById("sidebar").classList.remove("-translate-x-full");
-    document.getElementById("close-sidebar").onclick = () => document.getElementById("sidebar").classList.add("-translate-x-full");
-
-    // Auth State Listener
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        currentUser = user;
-        authScreen.classList.add("hidden");
-        appScreen.classList.remove("hidden");
-        document.getElementById("user-display-name").textContent = user.displayName || "Ayan";
-        document.getElementById("user-display-email").textContent = user.email;
-        await loadMemory();
-        loadChatList();
-      } else {
-        currentUser = null;
-        authScreen.classList.remove("hidden");
-        appScreen.classList.add("hidden");
-      }
-    });
-
-    // Load & Save Memory
-    async function loadMemory() {
-      const memRef = doc(db, "users", currentUser.uid, "settings", "memory");
-      const snap = await getDoc(memRef);
-      if (snap.exists()) {
-        userMemory = snap.data().text || "";
-        document.getElementById("memory-input").value = userMemory;
-      }
-    }
-
-    document.getElementById("save-memory-btn").onclick = async () => {
-      userMemory = document.getElementById("memory-input").value.trim();
-      await setDoc(doc(db, "users", currentUser.uid, "settings", "memory"), { text: userMemory });
-      alert("মেমোরি সেভ হয়ে গেছে ভাই!");
-    };
-
-    // Load Chat Sessions
-    function loadChatList() {
-      const q = query(collection(db, "users", currentUser.uid, "chats"), orderBy("updatedAt", "desc"));
-      onSnapshot(q, (snapshot) => {
-        const list = document.getElementById("chat-list");
-        list.innerHTML = "";
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const btn = document.createElement("button");
-          btn.className = `w-full text-left px-3 py-2 rounded-lg text-xs truncate transition ${currentChatId === docSnap.id ? "bg-slate-800 text-white font-semibold" : "text-slate-400 hover:bg-slate-800/50"}`;
-          btn.textContent = data.title || "নতুন চ্যাট";
-          btn.onclick = () => openChat(docSnap.id);
-          list.appendChild(btn);
-        });
-      });
-    }
-
-    // New Chat
-    document.getElementById("new-chat-btn").onclick = () => {
-      currentChatId = null;
-      chatHistory = [];
-      messagesBox.innerHTML = `<div class="text-center text-slate-500 text-xs my-10">নতুন চ্যাট শুরু হলো। বল কী জানতে চাস?</div>`;
-      document.getElementById("sidebar").classList.add("-translate-x-full");
-    };
-
-    // Open Existing Chat
-    async function openChat(chatId) {
-      currentChatId = chatId;
-      document.getElementById("sidebar").classList.add("-translate-x-full");
-      const msgRef = query(collection(db, "users", currentUser.uid, "chats", chatId, "messages"), orderBy("createdAt", "asc"));
-      onSnapshot(msgRef, (snap) => {
-        messagesBox.innerHTML = "";
-        chatHistory = [];
-        snap.forEach((d) => {
-          const m = d.data();
-          renderMessage(m.role, m.text, m.imageUrl);
-          chatHistory.push({ role: m.role === "user" ? "user" : "model", parts: [{ text: m.text }] });
-        });
-      });
-    }
-
-    // Image Attachment Handling
-    document.getElementById("image-input").onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        attachedImageBase64 = reader.result.split(",")[1];
-        attachedImageMime = file.type;
-        document.getElementById("preview-img").src = reader.result;
-        document.getElementById("preview-img").classList.remove("hidden");
-        document.getElementById("preview-text").textContent = file.name;
-        document.getElementById("attachment-preview").classList.remove("hidden");
-      };
-      reader.readAsDataURL(file);
-    };
-
-    document.getElementById("clear-attachment").onclick = () => {
-      attachedImageBase64 = null;
-      attachedImageMime = null;
-      document.getElementById("attachment-preview").classList.add("hidden");
-    };
-
-    // Quick Image Gen Prompt Helper
-    document.getElementById("gen-img-mode-btn").onclick = () => {
-      chatInput.value = "/imagine ";
-      chatInput.focus();
-    };
-
-    // Render Message in UI
-    function renderMessage(role, text, imageUrl = null) {
-      const isUser = role === "user";
-      const wrap = document.createElement("div");
-      wrap.className = `flex ${isUser ? "justify-end" : "justify-start"}`;
-      
-      let imgHtml = imageUrl ? `<img src="${imageUrl}" class="max-w-xs rounded-xl mb-2 border border-slate-700" />` : "";
-      let bodyHtml = isUser ? `<p class="whitespace-pre-wrap">${text}</p>` : `<div class="prose prose-invert max-w-none text-sm">${marked.parse(text)}</div>`;
-
-      wrap.innerHTML = `
-        <div class="max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-3 text-sm shadow ${isUser ? "bg-blue-600 text-white" : "glass text-slate-200"}">
-          ${imgHtml}
-          ${bodyHtml}
+  <!-- ==================== 6. HIDDEN VAULT MODAL ==================== -->
+  <div id="vault-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-3xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400">
+            <i class="fa-solid fa-user-secret"></i>
+          </div>
+          <div>
+            <h3 data-i18n="hidden_vault" class="text-sm font-bold text-white">Hidden Vault</h3>
+            <p class="text-[10px] text-slate-400">Long-press any chat to Unhide, Rename, or Delete</p>
+          </div>
         </div>
-      `;
-      messagesBox.appendChild(wrap);
-      messagesBox.scrollTop = messagesBox.scrollHeight;
-    }
+        <button type="button" id="close-vault-btn" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+      </div>
 
-    // Call Gemini API with Auto-Fallback
-    async function askGemini(promptText, imgBase64, imgMime) {
-      const selectedModel = document.getElementById("model-select").value;
-      const modelsToTry = [selectedModel, "gemini-3.5-flash-lite"];
+      <div id="vault-chat-list" class="max-h-72 overflow-y-auto space-y-2 custom-scroll"></div>
+    </div>
+  </div>
 
-      const systemInstruction = `তুই ইউজারের জিগরি দোস্ত এবং পার্সোনাল AI অ্যাসিস্ট্যান্ট। ইউজারের সাথে তুই-তোকারি করে, সহজ বাংলা ও ইংরেজি মিশিয়ে বন্ধুর মতো কথা বলবি।
-      ইউজারের সেভ করা মেমোরি: ${userMemory || "ইউজারের নাম অয়ন, ও একজন CSE স্টুডেন্ট।"}`;
+  <!-- Hidden Vault Item Action Menu -->
+  <div id="vault-context-menu" class="hidden fixed z-50 w-40 rounded-2xl p-1.5 context-menu text-xs">
+    <button type="button" id="vctx-unhide-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-cyan-300 flex items-center gap-2">
+      <i class="fa-solid fa-eye w-3.5"></i><span>Unhide</span>
+    </button>
+    <button type="button" id="vctx-rename-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2">
+      <i class="fa-solid fa-pen w-3.5"></i><span>Rename</span>
+    </button>
+    <button type="button" id="vctx-delete-btn" class="w-full text-left px-3 py-2 rounded-xl hover:bg-red-500/15 text-red-400 flex items-center gap-2">
+      <i class="fa-solid fa-trash-can w-3.5"></i><span>Delete</span>
+    </button>
+  </div>
 
-      const userParts = [{ text: promptText }];
-      if (imgBase64) {
-        userParts.push({ inline_data: { mime_type: imgMime, data: imgBase64 } });
-      }
+  <!-- ==================== 7. LIVE VOICE TALK OVERLAY (Auto-Language) ==================== -->
+  <div id="live-overlay" class="hidden fixed inset-0 z-50 bg-[#05070E]/96 backdrop-blur-2xl flex flex-col items-center justify-between p-6 text-center">
+    <div class="pt-4">
+      <span class="px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-medium">
+        Auto-Language Detection Active
+      </span>
+    </div>
 
-      const contents = [...chatHistory.slice(-10), { role: "user", parts: userParts }];
+    <div class="flex flex-col items-center my-auto">
+      <div id="live-orb" class="w-36 h-36 rounded-full voice-orb-core flex items-center justify-center text-4xl text-white mb-7">
+        <i class="fa-solid fa-waveform-lines"></i>
+      </div>
+      <h2 class="text-xl font-bold text-white mb-2">MinDora Live</h2>
+      <p id="live-status-text" class="text-sm text-cyan-300 max-w-md min-h-[44px] px-4">Listening... Speak in any language.</p>
+    </div>
 
-      for (const model of modelsToTry) {
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: systemInstruction }] },
-              contents: contents
-            })
-          });
-          const data = await res.json();
-          if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-            return data.candidates[0].content.parts[0].text;
-          }
-        } catch (e) {
-          console.warn("Model fallback triggered:", model, e);
-        }
-      }
-      return "সরি ভাই, এই মুহূর্তে সার্ভার একটু ব্যস্ত আছে বা API কোটা শেষ হয়েছে। একটু পর আবার ট্রাই কর!";
-    }
+    <!-- Bottom Controls: Mute, Speaker, Voice Changer, End -->
+    <div class="flex items-center gap-3 pb-4">
+      <button type="button" id="live-mute-btn" class="w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center text-base transition" title="Mute / Unmute Mic">
+        <i id="live-mute-icon" class="fa-solid fa-microphone"></i>
+      </button>
 
-    // Send Message Handler
-    async function handleSend(overrideText = null) {
-      const text = (overrideText || chatInput.value).trim();
-      if (!text && !attachedImageBase64) return;
+      <button type="button" id="live-speaker-btn" class="w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-cyan-400 flex items-center justify-center text-base transition" title="Speaker On / Off">
+        <i id="live-speaker-icon" class="fa-solid fa-volume-high"></i>
+      </button>
 
-      chatInput.value = "";
-      const tempImgBase64 = attachedImageBase64;
-      const tempImgMime = attachedImageMime;
-      const previewSrc = tempImgBase64 ? `data:${tempImgMime};base64,${tempImgBase64}` : null;
+      <button type="button" id="live-voice-style-btn" class="px-4 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition" title="Change Voice Tone">
+        <i class="fa-solid fa-sliders text-purple-400"></i>
+        <span id="live-voice-label">Natural</span>
+      </button>
 
-      attachedImageBase64 = null;
-      document.getElementById("attachment-preview").classList.add("hidden");
+      <button type="button" id="close-live-btn" class="w-12 h-12 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center text-base shadow-lg shadow-red-600/30 transition" title="End Call">
+        <i class="fa-solid fa-phone-slash"></i>
+      </button>
+    </div>
+  </div>
 
-      // Create Chat Doc if new
-      if (!currentChatId) {
-        const newDoc = await addDoc(collection(db, "users", currentUser.uid, "chats"), {
-          title: text.slice(0, 30) || "Image Chat",
-          updatedAt: serverTimestamp()
-        });
-        currentChatId = newDoc.id;
-      }
+  <!-- ==================== 8. DEDICATED CREATE IMAGE STUDIO MODAL ==================== -->
+  <div id="imagine-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-3xl p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white"><i class="fa-solid fa-wand-magic-sparkles text-purple-400 mr-2"></i>HD Image Studio</h3>
+        <button type="button" id="close-imagine-modal" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
 
-      // Save & Render User Message
-      renderMessage("user", text || "ছবিটা দেখ তো", previewSrc);
-      await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
-        role: "user",
-        text: text || "ছবিটা দেখ তো",
-        createdAt: serverTimestamp()
-      });
+      <div>
+        <label class="block text-[11px] text-slate-400 mb-1">Describe your image</label>
+        <textarea id="imagine-prompt-input" rows="3" placeholder="A futuristic neon cyberpunk city in rain, ultra detailed, 8k..."
+          class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500 resize-none"></textarea>
+      </div>
 
-      // Check Image Generation Command
-      if (text.toLowerCase().startsWith("/imagine ")) {
-        const imgPrompt = text.slice(9).trim();
-        const genUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imgPrompt)}?width=768&height=768&nologo=true`;
-        const reply = `এই নে ভাই, তোর **"${imgPrompt}"** ছবি তৈরি করে দিয়েছি!`;
-        renderMessage("model", reply, genUrl);
-        await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
-          role: "model", text: reply, imageUrl: genUrl, createdAt: serverTimestamp()
-        });
-        return;
-      }
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label class="block text-[11px] text-slate-400 mb-1">Style</label>
+          <select id="imagine-style" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none">
+            <option value="photorealistic, 8k resolution, sharp focus">Photorealistic</option>
+            <option value="anime masterpiece, vibrant studio lighting">Anime Art</option>
+            <option value="cyberpunk neon aesthetic, futuristic">Cyberpunk</option>
+            <option value="3d octane render, cinema4d, hyperdetailed">3D Render</option>
+            <option value="digital concept art, dramatic lighting">Digital Painting</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] text-slate-400 mb-1">Aspect Ratio</label>
+          <select id="imagine-ratio" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none">
+            <option value="1024x1024">1:1 Square (HD)</option>
+            <option value="1280x720">16:9 Landscape</option>
+            <option value="720x1280">9:16 Portrait</option>
+          </select>
+        </div>
+      </div>
 
-      // Auto-Memory Detection ("মনে রাখবি" / "remember")
-      if (text.includes("মনে রাখ") || text.toLowerCase().includes("remember")) {
-        userMemory = (userMemory + "\n- " + text).trim();
-        document.getElementById("memory-input").value = userMemory;
-        await setDoc(doc(db, "users", currentUser.uid, "settings", "memory"), { text: userMemory });
-      }
+      <button type="button" id="generate-image-btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-xs shadow-lg transition">
+        Generate High-Quality Image
+      </button>
+    </div>
+  </div>
 
-      // AI Typing Indicator
-      const loadingDiv = document.createElement("div");
-      loadingDiv.className = "text-xs text-cyan-400 animate-pulse";
-      loadingDiv.textContent = "ভাবছি ভাই...";
-      messagesBox.appendChild(loadingDiv);
+  <!-- ==================== 9. UNIFIED SECURITY PIN MODAL ==================== -->
+  <div id="pin-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div id="pin-modal-card" class="glass-card w-full max-w-xs rounded-3xl p-6 space-y-4 text-center">
+      <div class="w-12 h-12 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-xl text-amber-400">
+        <i class="fa-solid fa-shield-halved"></i>
+      </div>
+      <div>
+        <h3 id="pin-modal-title" class="text-base font-bold text-white">Enter Security PIN</h3>
+        <p id="pin-modal-desc" class="text-[11px] text-slate-400 mt-1">Protect your locked & hidden chats</p>
+      </div>
 
-      const aiReply = await askGemini(text || "এই ছবিটা বিস্তারিত বুঝিয়ে বল", tempImgBase64, tempImgMime);
-      loadingDiv.remove();
+      <div id="pin-old-wrap" class="hidden">
+        <input type="password" id="pin-old-input" inputmode="numeric" maxlength="6" placeholder="Old PIN"
+          class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center font-mono tracking-widest text-sm text-white focus:outline-none focus:border-amber-500" />
+      </div>
 
-      renderMessage("model", aiReply);
-      await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
-        role: "model", text: aiReply, createdAt: serverTimestamp()
-      });
+      <div>
+        <input type="password" id="pin-input" inputmode="numeric" maxlength="6" placeholder="••••"
+          class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center font-mono tracking-widest text-base text-white focus:outline-none focus:border-blue-500" />
+      </div>
 
-      if (isLiveMode) speakText(aiReply);
-    }
+      <div id="pin-confirm-wrap" class="hidden">
+        <input type="password" id="pin-confirm-input" inputmode="numeric" maxlength="6" placeholder="Confirm PIN"
+          class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center font-mono tracking-widest text-sm text-white focus:outline-none focus:border-blue-500" />
+      </div>
 
-    document.getElementById("send-btn").onclick = () => handleSend();
-    chatInput.onkeydown = (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    };
+      <p id="pin-error-text" class="hidden text-[11px] text-red-400"></p>
 
-    // Voice Recognition & Live Talk Mode
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition = SpeechRecognition ? new SpeechRecognition() : null;
-    if (recognition) {
-      recognition.lang = "bn-IN";
-      recognition.continuous = false;
-      recognition.onresult = (event) => {
-        const spoken = event.results[0][0].transcript;
-        if (isLiveMode) {
-          document.getElementById("live-status").textContent = "তুই বললি: " + spoken;
-          handleSend(spoken);
-        } else {
-          chatInput.value = spoken;
-        }
-      };
-      recognition.onend = () => {
-        if (isLiveMode && !window.speechSynthesis.speaking) {
-          try { recognition.start(); } catch(e) {}
-        }
-      };
-    }
+      <div class="flex gap-2">
+        <button type="button" id="close-pin-modal" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium">Cancel</button>
+        <button type="button" id="pin-submit-btn" class="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">Confirm</button>
+      </div>
 
-    function speakText(text) {
-      if (!window.speechSynthesis) return;
-      window.speechSynthesis.cancel();
-      const cleanText = text.replace(/[*#`_]/g, "");
-      const utter = new SpeechSynthesisUtterance(cleanText);
-      utter.lang = "bn-IN";
-      utter.onend = () => {
-        if (isLiveMode && recognition) {
-          document.getElementById("live-status").textContent = "শুনছি... আবার বল ভাই";
-          try { recognition.start(); } catch(e) {}
-        }
-      };
-      window.speechSynthesis.speak(utter);
-    }
+      <button type="button" id="forgot-pin-trigger-btn" class="text-[11px] text-blue-400 hover:underline">
+        Forgot PIN?
+      </button>
+    </div>
+  </div>
 
-    document.getElementById("mic-btn").onclick = () => {
-      if (!recognition) return alert("তোর ব্রাউজারে ভয়েস সাপোর্ট নেই!");
-      recognition.start();
-    };
+  <!-- ==================== 10. FORGOT PIN RE-AUTH MODAL ==================== -->
+  <div id="forgot-pin-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-3xl p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white">Reset Security PIN</h3>
+        <button type="button" id="close-forgot-pin-modal" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-xs text-slate-400">Verify your account identity to set a new Security PIN.</p>
 
-    document.getElementById("live-talk-btn").onclick = () => {
-      if (!recognition) return alert("তোর ব্রাউজারে Live Voice সাপোর্ট নেই!");
-      isLiveMode = true;
-      document.getElementById("live-overlay").classList.remove("hidden");
-      document.getElementById("live-status").textContent = "শুনছি... কথা বল ভাই";
-      recognition.start();
-    };
+      <div id="forgot-pin-email-box" class="space-y-2">
+        <input type="password" id="forgot-pin-account-pass" placeholder="Enter your account password"
+          class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+      </div>
 
-    document.getElementById("close-live-btn").onclick = () => {
-      isLiveMode = false;
-      window.speechSynthesis.cancel();
-      if (recognition) recognition.stop();
-      document.getElementById("live-overlay").classList.add("hidden");
-    };
-  </script>
+      <div id="forgot-pin-oauth-box" class="hidden">
+        <button type="button" id="forgot-pin-reauth-btn" class="w-full py-2.5 rounded-xl bg-white text-slate-900 font-semibold text-xs">
+          Re-verify with Google / Apple
+        </button>
+      </div>
+
+      <p id="forgot-pin-error" class="hidden text-xs text-red-400"></p>
+
+      <button type="button" id="verify-reauth-btn" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs">
+        Verify & Set New PIN
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== 11. FULL SYSTEM & SETTINGS HUB ==================== -->
+  <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 md:p-6">
+    <div class="glass-card w-full max-w-2xl rounded-3xl overflow-hidden flex flex-col max-h-[90dvh]">
+      <!-- Top Bar -->
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <h3 data-i18n="settings_title" class="text-base font-bold text-white">System & Settings</h3>
+        <button type="button" id="close-settings-btn" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-base"></i></button>
+      </div>
+
+      <!-- 4 Navigation Tabs -->
+      <div class="grid grid-cols-4 gap-1 p-2 bg-slate-950/70 border-b border-slate-800 text-[11px] font-medium">
+        <button type="button" class="settings-tab py-2 rounded-xl bg-blue-600 text-white" data-stab="account" data-i18n="tab_account">Account</button>
+        <button type="button" class="settings-tab py-2 rounded-xl text-slate-400 hover:text-white" data-stab="personalization" data-i18n="tab_personalization">Personalization</button>
+        <button type="button" class="settings-tab py-2 rounded-xl text-slate-400 hover:text-white" data-stab="security" data-i18n="tab_security">Security & PIN</button>
+        <button type="button" class="settings-tab py-2 rounded-xl text-slate-400 hover:text-white" data-stab="language" data-i18n="tab_language">Language</button>
+      </div>
+
+      <!-- Tab Panels Container -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-5 custom-scroll">
+
+        <!-- TAB A: ACCOUNT -->
+        <div id="spanel-account" class="settings-panel space-y-4">
+          <!-- Profile Photo Upload -->
+          <div class="flex items-center gap-4">
+            <div class="relative">
+              <img id="settings-avatar-img" class="hidden w-16 h-16 rounded-full object-cover border-2 border-cyan-500/50" alt="Avatar" />
+              <div id="settings-avatar-initial" class="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-xl font-bold text-white">
+                A
+              </div>
+            </div>
+            <div>
+              <label class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold cursor-pointer inline-block transition">
+                <i class="fa-solid fa-camera mr-1.5"></i>Change Photo
+                <input type="file" id="avatar-upload-input" accept="image/*" class="hidden" />
+              </label>
+              <p class="text-[10px] text-slate-400 mt-1">Auto-optimized HD profile photo</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label data-i18n="fullname_label" class="block text-[11px] text-slate-400 mb-1">Full Name</label>
+              <input type="text" id="settings-fullname" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label data-i18n="username_label" class="block text-[11px] text-slate-400 mb-1">Username</label>
+              <input type="text" id="settings-username" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label data-i18n="age_label" class="block text-[11px] text-slate-400 mb-1">Age</label>
+              <input type="number" id="settings-age" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label data-i18n="gender_label" class="block text-[11px] text-slate-400 mb-1">Gender</label>
+              <select id="settings-gender" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Password Change / Reset -->
+          <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+            <p class="text-xs font-semibold text-white">Password Management</p>
+            <div class="flex gap-2">
+              <input type="password" id="settings-new-pass" placeholder="New password (min 6 chars)" class="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none" />
+              <button type="button" id="update-pass-btn" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold">Update</button>
+            </div>
+            <button type="button" id="settings-reset-email-btn" class="text-[11px] text-blue-400 hover:underline">Send Password Reset Email instead</button>
+          </div>
+
+          <!-- API Key Config -->
+          <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2">
+            <label class="block text-[11px] text-slate-400">Gemini Auth / API Key</label>
+            <input type="text" id="settings-api-key" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-cyan-300 focus:outline-none" />
+          </div>
+
+          <div class="flex items-center justify-between pt-2">
+            <button type="button" id="settings-logout-btn" data-i18n="sign_out" class="px-4 py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-semibold">
+              Sign Out
+            </button>
+            <button type="button" id="save-account-btn" data-i18n="save_changes" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow">
+              Save Changes
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB B: PERSONALIZATION (Memory + Custom System Prompt) -->
+        <div id="spanel-personalization" class="settings-panel hidden space-y-4">
+          <div>
+            <label data-i18n="memory_title" class="block text-xs font-semibold text-cyan-400 mb-1.5">Auto & Custom Memory</label>
+            <p class="text-[11px] text-slate-400 mb-2">MinDora automatically learns facts from your chats and stores them here. You can freely edit or delete anything.</p>
+            <textarea id="settings-memory-input" rows="5" placeholder="Facts MinDora remembers about you..."
+              class="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+          </div>
+
+          <div>
+            <label data-i18n="custom_prompt_title" class="block text-xs font-semibold text-purple-400 mb-1.5">Custom System Instructions</label>
+            <p class="text-[11px] text-slate-400 mb-2">Tell MinDora how you want it to behave, talk, or format answers across every chat.</p>
+            <textarea id="settings-custom-prompt" rows="4" placeholder="e.g., Always explain with real-world examples, keep answers crisp..."
+              class="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500"></textarea>
+          </div>
+
+          <div class="flex justify-end">
+            <button type="button" id="save-personalization-btn" data-i18n="save_changes" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">
+              Save Changes
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB C: SECURITY & PIN -->
+        <div id="spanel-security" class="settings-panel hidden space-y-4">
+          <div class="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 data-i18n="pin_title" class="text-sm font-bold text-white">Security PIN</h4>
+                <p id="security-pin-status" class="text-xs text-slate-400 mt-0.5">Used for Locked Chats & Hidden Vault</p>
+              </div>
+              <i class="fa-solid fa-lock text-amber-400 text-lg"></i>
+            </div>
+
+            <div class="flex flex-wrap gap-2.5 pt-2">
+              <button type="button" id="open-change-pin-btn" data-i18n="change_pin" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">
+                Set / Change PIN
+              </button>
+              <button type="button" id="open-forgot-pin-btn" data-i18n="forgot_pin" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold">
+                Forgot PIN? Reset via Account
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB D: LANGUAGE -->
+        <div id="spanel-language" class="settings-panel hidden space-y-3">
+          <h4 data-i18n="language_title" class="text-xs font-semibold text-slate-300">Interface Language</h4>
+          <div id="language-list-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 12. LIVE CODE PREVIEW SANDBOX MODAL ==================== -->
+  <div id="code-preview-modal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 md:p-6">
+    <div class="glass-card w-full max-w-4xl h-[82dvh] rounded-3xl overflow-hidden flex flex-col">
+      <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          <span class="text-xs font-semibold text-slate-300 ml-2">Live Code Preview Sandbox</span>
+        </div>
+        <button type="button" id="close-preview-modal" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white">
+          Close
+        </button>
+      </div>
+      <iframe id="code-preview-iframe" sandbox="allow-scripts" class="flex-1 w-full bg-white"></iframe>
+    </div>
+  </div>
+
+  <!-- Main App Entry Point -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>
