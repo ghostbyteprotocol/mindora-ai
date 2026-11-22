@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (Streaming, KaTeX Math, Neural Studio Voice, PIN Vault & Settings)
+// app.js — MinDora AI Core Engine (Dual-Fallback Streaming, KaTeX Math, Native Neural TTS, PIN Vault)
 import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -30,7 +30,7 @@ let securityPin = null;
 let activeMode = "default";
 
 // Attachment State
-let attachedFile = null; // { name, mime, base64, textContent, isImage }
+let attachedFile = null;
 
 // Streaming & Neural Audio State
 let isStreaming = false;
@@ -47,6 +47,12 @@ let isLiveActive = false;
 let isLiveMuted = false;
 let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
+
+// Preload browser voices in case fallback is ever needed
+if (window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
 
 // ==================== INITIALIZATION ====================
 document.addEventListener("DOMContentLoaded", () => {
@@ -121,7 +127,6 @@ function setupSidebarAndGestures() {
   document.getElementById("close-sidebar").onclick = closeSidebar;
   backdrop.onclick = closeSidebar;
 
-  // Touch Swipe Right to Open / Swipe Left to Close
   let touchStartX = 0;
   let touchStartY = 0;
 
@@ -146,10 +151,8 @@ function setupSidebarAndGestures() {
     }
   }, { passive: true });
 
-  // Search Chats
   document.getElementById("chat-search-input").oninput = () => renderChatList();
 
-  // New Chat
   document.getElementById("new-chat-btn").onclick = () => {
     startNewChat();
     closeSidebar();
@@ -194,7 +197,6 @@ function setupSidebarAndGestures() {
     document.getElementById("settings-modal").classList.remove("hidden");
   };
 
-  // Close context menus when clicking outside
   document.addEventListener("click", (e) => {
     const ctx = document.getElementById("chat-context-menu");
     const vctx = document.getElementById("vault-context-menu");
@@ -292,7 +294,6 @@ function openChatContextMenu(event, chat) {
   menu.style.top = `${y}px`;
 }
 
-// Context Menu Actions
 document.getElementById("ctx-pin-btn").onclick = async () => {
   if (!targetContextChat) return;
   await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), {
@@ -360,7 +361,6 @@ document.getElementById("ctx-delete-btn").onclick = async () => {
   }
 };
 
-// Hidden Vault Flow
 function openHiddenVaultFlow() {
   const mode = securityPin ? "verify" : "setup";
   openPinModal(mode, () => {
@@ -766,7 +766,6 @@ async function regenerateFromIndex(aiMsgIndex) {
   await generateAIResponseOnly(prevUserMsg.text, null);
 }
 
-// Enhance Code Blocks with Copy + Live Run Preview
 function enhanceCodeBlocks(container) {
   container.querySelectorAll("pre").forEach((pre) => {
     const codeEl = pre.querySelector("code");
@@ -827,7 +826,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. GEMINI NEURAL STUDIO VOICE (REAL HUMAN TTS) ====================
+// ==================== 6. REAL HUMAN NEURAL STUDIO TTS ENGINE ====================
 function stopCurrentSpeech() {
   if (activeAudioPlayer) {
     activeAudioPlayer.pause();
@@ -843,7 +842,6 @@ function stopCurrentSpeech() {
   }
 }
 
-// Convert Gemini 24kHz 16-bit Mono PCM Base64 to playable WAV Blob URL
 function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
   const binaryStr = atob(base64Pcm);
   const pcmLength = binaryStr.length;
@@ -859,8 +857,8 @@ function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
   writeStr(8, "WAVE");
   writeStr(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // Mono
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
@@ -883,11 +881,12 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
-    .slice(0, 1800);
+    .slice(0, 1500);
 
   if (!cleanSpeechText) return null;
 
-  const ttsModels = ["gemini-3.8-flash", "gemini-flash-latest"];
+  // Dedicated Gemini Native Neural TTS Models
+  const ttsModels = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
   for (const model of ttsModels) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -897,15 +896,7 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
           "X-goog-api-key": getApiKey()
         },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Read the following text aloud naturally like a warm, expressive human friend in its exact original language. Do not add any extra words:\n\n${cleanSpeechText}`
-                }
-              ]
-            }
-          ],
+          contents: [{ parts: [{ text: cleanSpeechText }] }],
           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: {
@@ -923,10 +914,21 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
         return pcmBase64ToWavUrl(inlineData.data, 24000);
       }
     } catch (e) {
-      console.warn("Neural TTS fallback:", e);
+      console.warn("Neural TTS attempt failed:", model, e);
     }
   }
   return null;
+}
+
+function getBestHumanBrowserVoice(langCode) {
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  if (!voices.length) return null;
+  const prefix = langCode.split("-")[0];
+  return (
+    voices.find((v) => v.lang.startsWith(prefix) && /google|natural|online|neural/i.test(v.name)) ||
+    voices.find((v) => v.lang.startsWith(prefix)) ||
+    null
+  );
 }
 
 function detectFallbackLang(text) {
@@ -950,7 +952,7 @@ async function toggleNeuralListen(text, btnEl) {
   const voiceName = STUDIO_VOICES[studioVoiceIndex]?.id || "Zephyr";
   const wavUrl = await fetchGeminiNeuralAudioUrl(text, voiceName);
 
-  if (activeAudioBtn !== btnEl) return; // Cancelled while loading
+  if (activeAudioBtn !== btnEl) return;
 
   if (wavUrl) {
     btnEl.querySelector("span").textContent = "Stop";
@@ -960,11 +962,13 @@ async function toggleNeuralListen(text, btnEl) {
     audio.onerror = () => stopCurrentSpeech();
     audio.play();
   } else if (window.speechSynthesis) {
-    // Graceful fallback if audio modality quota is hit
     btnEl.querySelector("span").textContent = "Stop";
     const clean = text.replace(/```[\s\S]*?```/g, "").replace(/[*#`_~>$]/g, "");
     const utter = new SpeechSynthesisUtterance(clean);
-    utter.lang = detectFallbackLang(clean);
+    const langCode = detectFallbackLang(clean);
+    utter.lang = langCode;
+    const bestVoice = getBestHumanBrowserVoice(langCode);
+    if (bestVoice) utter.voice = bestVoice;
     utter.onend = () => stopCurrentSpeech();
     window.speechSynthesis.speak(utter);
   } else {
@@ -1002,7 +1006,6 @@ function setupChatInputAndTools() {
     btn.onclick = () => sendPromptPipeline(btn.dataset.prompt);
   });
 
-  // 1-Tap Quick Mode Pills
   document.querySelectorAll(".mode-pill").forEach((pill) => {
     pill.onclick = () => {
       activeMode = pill.dataset.mode;
@@ -1013,7 +1016,6 @@ function setupChatInputAndTools() {
     };
   });
 
-  // File Upload (Blocks Video Strictly)
   document.getElementById("file-input").onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1071,7 +1073,6 @@ function setupChatInputAndTools() {
 
   document.getElementById("clear-attachment-btn").onclick = clearAttachment;
 
-  // Prompt Enhancer
   document.getElementById("enhance-prompt-btn").onclick = async () => {
     const raw = input.value.trim();
     if (!raw || isStreaming) return;
@@ -1112,7 +1113,7 @@ function setStreamingState(active) {
   }
 }
 
-// ==================== 8. FAST STREAMING AI PIPELINE (ALL MODELS WORKING) ====================
+// ==================== 8. ROCK-SOLID DUAL-FALLBACK AI PIPELINE ====================
 async function sendPromptPipeline(overrideText = null, liveVoiceCallback = null) {
   const input = document.getElementById("chat-input");
   const rawText = (overrideText !== null ? overrideText : input.value).trim();
@@ -1200,12 +1201,12 @@ async function generateAIResponseOnly(promptText, filePayload, liveVoiceCallback
   const modelSpec = MINDORA_MODELS[selectedKey] || MINDORA_MODELS.auto;
   const modePrompt = QUICK_MODES[activeMode]?.instruction || "";
 
-  const fullSystemInstruction = `You are MinDora AI, a sharp, friendly, and intelligent personal AI assistant. Respond naturally in the exact language the user writes or speaks in.
-Model Profile: ${modelSpec.styleHint}
+  const systemGuide = `You are MinDora AI, a sharp, friendly, and intelligent personal AI assistant. Respond naturally in the exact language the user writes or speaks in.
+${modelSpec.styleHint ? `Model Profile: ${modelSpec.styleHint}` : ""}
 Mode Behavior: ${modePrompt}
 User Profile: Name is ${currentProfile?.fullName || "User"}, Age ${currentProfile?.age || "N/A"}, Gender ${currentProfile?.gender || "N/A"}.
 Saved Memory: ${userMemory || "None yet."}
-Custom User Instructions: ${customSystemPrompt || "None."}`;
+Custom Instructions: ${customSystemPrompt || "None."}`;
 
   let finalUserPrompt = promptText;
   if (filePayload?.textContent) {
@@ -1222,67 +1223,117 @@ Custom User Instructions: ${customSystemPrompt || "None."}`;
     parts: [{ text: m.text }]
   }));
 
-  const payload = {
-    system_instruction: { parts: [{ text: fullSystemInstruction }] },
+  const fullPayload = {
+    system_instruction: { parts: [{ text: systemGuide }] },
     contents: [...historyContents, { role: "user", parts: userParts }]
+  };
+
+  // Fallback payload with system instructions merged directly into prompt
+  const directPayload = {
+    contents: [
+      ...historyContents,
+      {
+        role: "user",
+        parts: [
+          { text: `[System Context: ${systemGuide}]\n\n${finalUserPrompt}` },
+          ...(filePayload?.base64 ? [{ inline_data: { mime_type: filePayload.mime, data: filePayload.base64 } }] : [])
+        ]
+      }
+    ]
   };
 
   let accumulatedText = "";
   let succeeded = false;
+  let lastApiError = "";
 
   for (const modelName of modelSpec.chain) {
     if (streamAbortController.signal.aborted) break;
+
+    // 1. Try Fast SSE Streaming First
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse`;
-      const response = await fetch(url, {
+      const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse`;
+      const response = await fetch(streamUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-goog-api-key": getApiKey()
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(fullPayload),
         signal: streamAbortController.signal
       });
 
-      if (!response.ok) continue;
+      if (response.ok && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
 
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const jsonStr = line.slice(6).trim();
-            if (!jsonStr || jsonStr === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const chunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || "";
-              if (chunk) {
-                accumulatedText += chunk;
-                textTarget.innerHTML = marked.parse(accumulatedText);
-                box.scrollTop = box.scrollHeight;
-              }
-            } catch (e) {}
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr || jsonStr === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(jsonStr);
+                const chunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                if (chunk) {
+                  accumulatedText += chunk;
+                  textTarget.innerHTML = marked.parse(accumulatedText);
+                  box.scrollTop = box.scrollHeight;
+                }
+              } catch (e) {}
+            }
           }
         }
-      }
 
-      if (accumulatedText) {
-        succeeded = true;
-        break;
+        if (accumulatedText) {
+          succeeded = true;
+          break;
+        }
       }
     } catch (err) {
       if (err.name === "AbortError") {
         succeeded = true;
         break;
+      }
+    }
+
+    // 2. Instant Standard :generateContent Fallback (100% compatible with AQ. keys)
+    if (!succeeded && !streamAbortController.signal.aborted) {
+      try {
+        const stdUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+        const res = await fetch(stdUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": getApiKey()
+          },
+          body: JSON.stringify(directPayload),
+          signal: streamAbortController.signal
+        });
+
+        const data = await res.json();
+        if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          accumulatedText = data.candidates[0].content.parts[0].text;
+          textTarget.innerHTML = marked.parse(accumulatedText);
+          box.scrollTop = box.scrollHeight;
+          succeeded = true;
+          break;
+        } else if (data.error?.message) {
+          lastApiError = data.error.message;
+        }
+      } catch (err) {
+        if (err.name === "AbortError") {
+          succeeded = true;
+          break;
+        }
+        lastApiError = err.message;
       }
     }
   }
@@ -1292,7 +1343,7 @@ Custom User Instructions: ${customSystemPrompt || "None."}`;
   setStreamingState(false);
 
   if (!succeeded && !accumulatedText) {
-    accumulatedText = "Connection interrupted or quota reached. Please try again or check your API key in Settings.";
+    accumulatedText = `**API Error:** ${lastApiError || "Unable to connect. Please verify your API key in Settings."}`;
     textTarget.innerHTML = marked.parse(accumulatedText);
   }
 
@@ -1304,7 +1355,7 @@ Custom User Instructions: ${customSystemPrompt || "None."}`;
 
   loadChatMessages(currentChatId);
 
-  if (liveVoiceCallback) liveVoiceCallback(accumulatedText);
+  if (liveVoiceCallback && succeeded) liveVoiceCallback(accumulatedText);
 }
 
 async function callGeminiSingleShot(prompt) {
@@ -1552,7 +1603,10 @@ function setupLiveVoiceEngine() {
     } else if (window.speechSynthesis) {
       const clean = text.replace(/```[\s\S]*?```/g, "").replace(/[*#`_~>$]/g, "");
       const utter = new SpeechSynthesisUtterance(clean);
-      utter.lang = detectFallbackLang(clean);
+      const langCode = detectFallbackLang(clean);
+      utter.lang = langCode;
+      const bestVoice = getBestHumanBrowserVoice(langCode);
+      if (bestVoice) utter.voice = bestVoice;
       utter.onend = resumeListening;
       window.speechSynthesis.speak(utter);
     } else {
@@ -1615,7 +1669,6 @@ function setupLiveVoiceEngine() {
     }
   };
 
-  // Switch between Gemini Neural Studio Voices (Zephyr, Kore, Puck, Fenrir, Aoede)
   document.getElementById("live-voice-style-btn").onclick = () => {
     studioVoiceIndex = (studioVoiceIndex + 1) % STUDIO_VOICES.length;
     document.getElementById("live-voice-label").textContent = STUDIO_VOICES[studioVoiceIndex].label;

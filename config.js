@@ -20,7 +20,8 @@ export const db = getFirestore(app);
 const DEFAULT_GEMINI_KEY = "AQ.Ab8RN6LrOs8jPFU2_CNyCh7WcpuoJQXeo-HNqa2CRRi2SByn6g";
 
 export function getApiKey() {
-  return localStorage.getItem("mindora_api_key") || DEFAULT_GEMINI_KEY;
+  const saved = localStorage.getItem("mindora_api_key");
+  return saved && saved.trim().length > 10 ? saved.trim() : DEFAULT_GEMINI_KEY;
 }
 
 export function setApiKey(newKey) {
@@ -29,31 +30,31 @@ export function setApiKey(newKey) {
   }
 }
 
-// Verified Active 2026 Gemini Models mapped to MinDora Aliases
+// Verified Working Gemini Endpoints for AQ. Auth Keys
 export const MINDORA_MODELS = {
   auto: {
     label: "MinDora Auto",
-    chain: ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.6-flash"],
+    chain: ["gemini-flash-latest", "gemini-3.8-flash"],
     styleHint: ""
   },
   "mindora-1": {
     label: "MinDora 1",
-    chain: ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest"],
+    chain: ["gemini-flash-lite-latest", "gemini-flash-latest"],
     styleHint: "Respond ultra-fast, concisely, and directly."
   },
   "mindora-2": {
     label: "MinDora 2",
-    chain: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
+    chain: ["gemini-3.8-flash", "gemini-flash-latest"],
     styleHint: "Provide thorough, well-structured, high-precision reasoning and code."
   },
   "mindora-3": {
     label: "MinDora 3",
-    chain: ["gemini-4-argon", "gemini-3.8-flash", "gemini-flash-latest"],
-    styleHint: "Use deep frontier analytical reasoning with clear step-by-step structure."
+    chain: ["gemini-pro-latest", "gemini-3.8-flash", "gemini-flash-latest"],
+    styleHint: "Use deep analytical reasoning with clear step-by-step structure."
   }
 };
 
-// Gemini Neural Studio Voices (Real Human-like TTS)
+// Gemini Native Neural TTS Voices (Human-like Studio Voices)
 export const STUDIO_VOICES = [
   { id: "Zephyr", label: "Zephyr • Warm" },
   { id: "Kore", label: "Kore • Clear" },

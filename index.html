@@ -47,7 +47,7 @@
       background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.11) 0%, rgba(99, 102, 241, 0.05) 38%, transparent 72%);
     }
 
-    /* Solid Premium Surfaces (Never Transparent Over Text) */
+    /* Solid Premium Surfaces */
     .surface-header {
       background: rgba(9, 12, 20, 0.92);
       backdrop-filter: blur(16px);
@@ -262,7 +262,7 @@
   <!-- ==================== 1. AUTHENTICATION SCREEN ==================== -->
   <section id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-[#07090F]">
     <div class="surface-card w-full max-w-[420px] rounded-[28px] p-7 relative z-10 my-auto">
-      <!-- Brand Logo (Loads your logo.png with clean fallback) -->
+      <!-- Brand Logo -->
       <div class="flex flex-col items-center text-center mb-6">
         <div class="w-16 h-16 rounded-2xl bg-[#0b0f1c] logo-ring flex items-center justify-center overflow-hidden mb-3.5 p-1.5">
           <img src="logo.png" alt="MinDora AI" class="w-full h-full object-contain rounded-xl"
@@ -637,9 +637,11 @@
             <i class="fa-solid fa-microphone text-sm"></i>
           </button>
 
-          <!-- Live Talk Button -->
+          <!-- Live Talk Button (Crisp SVG Waveform Icon) -->
           <button type="button" id="live-talk-btn" title="Live Voice Talk" class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold flex items-center justify-center shadow-lg shadow-emerald-500/25 transition shrink-0">
-            <i class="fa-solid fa-waveform-lines text-base"></i>
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/>
+            </svg>
           </button>
         </div>
       </div>
