@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (100% Custom Modals/Toasts, Synced Text+Voice & Tiered Developer Persona)
+// app.js — MinDora AI Core Engine (6-Tap Top-Left Logo Hidden Vault, Custom UI, Synced Text+Voice)
 import { db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -57,7 +57,6 @@ function showCustomToast(message, type = "info") {
   }, 3200);
 }
 
-// Override native browser alert globally so even external modules use our custom toast
 window.alert = (msg) => showCustomToast(msg, "info");
 
 function showCustomConfirm({ title = "Confirm Action", message = "", confirmText = "Confirm", danger = false }) {
@@ -172,7 +171,6 @@ const voicePreviewCache = {};
 const sharedAudioPlayer = new Audio();
 sharedAudioPlayer.preload = "auto";
 
-// Tiered Developer & AI Identity Rules (Strict Disclosure Control)
 const MINDORA_IDENTITY_PROMPT = `
 Identity & Developer Knowledge (Follow these exact rules ONLY when asked about yourself or your developer/creator):
 1. Self-Introduction: You are **MinDora AI**, an intelligent, fast, multilingual personal AI assistant.
@@ -229,7 +227,7 @@ async function syncElevenLabsVoices() {
   } catch (e) {}
 }
 
-// ==================== CUSTOM PREMIUM DROPDOWN ENHANCER (NO BROWSER POPUPS) ====================
+// ==================== CUSTOM PREMIUM DROPDOWN ENHANCER ====================
 function upgradeNativeSelectToCustom(selectId, extraClass = "") {
   const nativeSel = document.getElementById(selectId);
   if (!nativeSel || nativeSel.dataset.customized === "true") return;
@@ -367,7 +365,7 @@ function updatePinStatusUI() {
   }
 }
 
-// ==================== 2. SIDEBAR, SWIPE GESTURES & 5-SEC HOLD ====================
+// ==================== 2. SIDEBAR, SWIPE GESTURES & 6-TAP TOP-LEFT LOGO VAULT ====================
 function setupSidebarAndGestures() {
   const sidebar = document.getElementById("sidebar");
   const backdrop = document.getElementById("sidebar-backdrop");
@@ -387,6 +385,34 @@ function setupSidebarAndGestures() {
   if (openBtn) openBtn.onclick = openSidebar;
   if (closeBtn) closeBtn.onclick = closeSidebar;
   if (backdrop) backdrop.onclick = closeSidebar;
+
+  // Secret 6-Tap on Top-Left Sidebar Logo -> Prompts Security PIN -> Opens Hidden Vault
+  if (sidebar) {
+    const sidebarLogoImg = sidebar.querySelector('img[src="logo.png"]');
+    const secretLogoTarget = sidebarLogoImg ? sidebarLogoImg.parentElement : null;
+    if (secretLogoTarget) {
+      secretLogoTarget.style.cursor = "pointer";
+      secretLogoTarget.style.userSelect = "none";
+      let logoTapCount = 0;
+      let logoTapResetTimer = null;
+
+      secretLogoTarget.addEventListener("click", (e) => {
+        e.stopPropagation();
+        logoTapCount += 1;
+        clearTimeout(logoTapResetTimer);
+        logoTapResetTimer = setTimeout(() => {
+          logoTapCount = 0;
+        }, 2200);
+
+        if (logoTapCount >= 6) {
+          logoTapCount = 0;
+          clearTimeout(logoTapResetTimer);
+          closeSidebar();
+          openHiddenVaultFlow();
+        }
+      });
+    }
+  }
 
   let touchStartX = 0;
   let touchStartY = 0;
@@ -420,41 +446,10 @@ function setupSidebarAndGestures() {
     };
   }
 
+  // Bottom Profile Button -> Opens Settings cleanly on tap
   const profileBtn = document.getElementById("profile-hold-btn");
   if (profileBtn) {
-    let holdTimer = null;
-    let longPressTriggered = false;
-
-    const startHold = (e) => {
-      if (e.type === "mousedown" && e.button !== 0) return;
-      longPressTriggered = false;
-      profileBtn.classList.add("holding");
-
-      holdTimer = setTimeout(() => {
-        longPressTriggered = true;
-        profileBtn.classList.remove("holding");
-        closeSidebar();
-        openHiddenVaultFlow();
-      }, 5000);
-    };
-
-    const cancelHold = () => {
-      clearTimeout(holdTimer);
-      profileBtn.classList.remove("holding");
-    };
-
-    profileBtn.addEventListener("touchstart", startHold, { passive: true });
-    profileBtn.addEventListener("touchend", cancelHold);
-    profileBtn.addEventListener("touchcancel", cancelHold);
-    profileBtn.addEventListener("mousedown", startHold);
-    profileBtn.addEventListener("mouseup", cancelHold);
-    profileBtn.addEventListener("mouseleave", cancelHold);
-
     profileBtn.onclick = () => {
-      if (longPressTriggered) {
-        longPressTriggered = false;
-        return;
-      }
       closeSidebar();
       renderCustomVoiceListUI();
       document.getElementById("settings-modal").classList.remove("hidden");
@@ -487,6 +482,7 @@ function renderChatList() {
   const searchTerm = (document.getElementById("chat-search-input")?.value || "").trim().toLowerCase();
   listEl.innerHTML = "";
 
+  // Strictly exclude hidden chats from main sidebar list
   const visibleChats = allChats
     .filter((c) => !c.hidden && (!searchTerm || (c.title || "").toLowerCase().includes(searchTerm)))
     .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
@@ -655,38 +651,29 @@ function renderVaultList() {
   hiddenChats.forEach((chat) => {
     const row = document.createElement("div");
     row.className = "flex items-center justify-between px-3.5 py-3 rounded-2xl bg-[#111625] border border-slate-800 hover:border-purple-500/40 text-xs text-white cursor-pointer select-none transition";
-    row.innerHTML = `
-      <div class="flex items-center gap-2.5 min-w-0">
-        <i class="fa-solid fa-eye-slash text-purple-400"></i>
-        <span class="truncate font-medium">${escapeHtml(chat.title || "Hidden Chat")}</span>
-      </div>
-      <span class="text-[10px] text-slate-500">Hold for options</span>
+
+    const left = document.createElement("div");
+    left.className = "flex items-center gap-2.5 min-w-0 flex-1";
+    left.innerHTML = `
+      <i class="fa-solid fa-eye-slash text-purple-400"></i>
+      <span class="truncate font-medium">${escapeHtml(chat.title || "Hidden Chat")}</span>
     `;
-
-    let vHoldTimer = null;
-    let vLongPressed = false;
-
-    const startVHold = (e) => {
-      vLongPressed = false;
-      vHoldTimer = setTimeout(() => {
-        vLongPressed = true;
-        openVaultContextMenu(e.touches ? e.touches[0] : e, chat);
-      }, 550);
-    };
-
-    const endVHold = () => clearTimeout(vHoldTimer);
-
-    row.addEventListener("touchstart", startVHold, { passive: true });
-    row.addEventListener("touchend", endVHold);
-    row.addEventListener("mousedown", startVHold);
-    row.addEventListener("mouseup", endVHold);
-
-    row.onclick = () => {
-      if (vLongPressed) return;
+    left.onclick = () => {
       document.getElementById("vault-modal").classList.add("hidden");
       loadChatMessages(chat.id);
     };
 
+    const optBtn = document.createElement("button");
+    optBtn.type = "button";
+    optBtn.className = "p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0";
+    optBtn.innerHTML = `<i class="fa-solid fa-ellipsis-vertical text-xs"></i>`;
+    optBtn.onclick = (e) => {
+      e.stopPropagation();
+      openVaultContextMenu(e, chat);
+    };
+
+    row.appendChild(left);
+    row.appendChild(optBtn);
     vaultEl.appendChild(row);
   });
 }
@@ -1630,7 +1617,6 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
       if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
         const rawReply = data.candidates[0].content.parts[0].text;
         if (liveVoiceCallback) {
-          // Trigger synchronized voice + text display pipeline immediately
           liveVoiceCallback(rawReply);
           textTarget.innerHTML = marked.parse(rawReply);
           finalReply = rawReply;
@@ -1909,7 +1895,6 @@ function setupLiveVoiceEngine() {
     sharedAudioPlayer.onerror = null;
   }
 
-  // Reveals text progressively in exact sync with audio playback
   function revealTextSyncedWithAudio(fullCleanText) {
     if (!statusText) return;
     if (textSyncInterval) {
@@ -2093,7 +2078,6 @@ function setupLiveVoiceEngine() {
     };
   }
 
-  // Hold text display until the exact millisecond the voice starts playing!
   async function speakInLiveMode(text) {
     const cleanDisplay = text.replace(/[*#`_~>$]/g, "").trim();
 
@@ -2128,7 +2112,6 @@ function setupLiveVoiceEngine() {
     isAiSpeakingTurn = true;
     try { if (recognition) recognition.abort(); } catch (e) {}
 
-    // Keep "Thinking..." visible until audio is ready so text never arrives ahead of voice
     setLiveTurnUI("thinking");
     if (statusText) statusText.textContent = "Thinking...";
 
@@ -2143,7 +2126,6 @@ function setupLiveVoiceEngine() {
     if (mp3Url) {
       sharedAudioPlayer.src = mp3Url;
       sharedAudioPlayer.onplay = () => {
-        // Exact millisecond voice starts -> show Speaking UI + reveal text in sync!
         setLiveTurnUI("speaking");
         revealTextSyncedWithAudio(cleanDisplay.slice(0, 260));
       };
