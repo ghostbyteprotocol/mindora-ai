@@ -1,4 +1,4 @@
-// config.js — Core Configuration, Firebase Init & Verified MinDora Models
+// config.js — Core Configuration, Firebase Init & Secure Apps Script Proxy
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -17,11 +17,11 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-const DEFAULT_GEMINI_KEY = "AQ.Ab8RN6LrOs8jPFU2_CNyCh7WcpuoJQXeo-HNqa2CRRi2SByn6g";
+// Secure Google Apps Script Proxy (Hides your Gemini API Key safely)
+export const PROXY_URL = "https://script.google.com/macros/s/AKfycbyJtouDUtiyK0OaKXdkgnfU0pp-nnyhY_UlnpU9wn1al-9okxqj6sGEBSDBz6rbP7Qi/exec";
 
 export function getApiKey() {
-  const saved = localStorage.getItem("mindora_api_key");
-  return saved && saved.trim().length > 10 ? saved.trim() : DEFAULT_GEMINI_KEY;
+  return localStorage.getItem("mindora_api_key") || "";
 }
 
 export function setApiKey(newKey) {
@@ -30,7 +30,6 @@ export function setApiKey(newKey) {
   }
 }
 
-// Verified Working Gemini Endpoints for AQ. Auth Keys
 export const MINDORA_MODELS = {
   auto: {
     label: "MinDora Auto",
@@ -54,7 +53,6 @@ export const MINDORA_MODELS = {
   }
 };
 
-// Gemini Native Neural TTS Voices (Human-like Studio Voices)
 export const STUDIO_VOICES = [
   { id: "Zephyr", label: "Zephyr • Warm" },
   { id: "Kore", label: "Kore • Clear" },

@@ -1,5 +1,5 @@
-// app.js — MinDora AI Core Engine (Dual-Fallback Streaming, KaTeX Math, Native Neural TTS, PIN Vault)
-import { db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
+// app.js — MinDora AI Core Engine (Secure Proxy, KaTeX Math, Neural Studio Voice, PIN Vault)
+import { db, PROXY_URL, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
 import {
@@ -29,33 +29,61 @@ let customSystemPrompt = "";
 let securityPin = null;
 let activeMode = "default";
 
-// Attachment State
 let attachedFile = null;
-
-// Streaming & Neural Audio State
 let isStreaming = false;
 let streamAbortController = null;
 let activeAudioPlayer = null;
 let activeAudioBtn = null;
 
-// Context Menu & Vault State
 let targetContextChat = null;
 let unlockedChatsSession = new Set();
 
-// Live Voice State
 let isLiveActive = false;
 let isLiveMuted = false;
 let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
 
-// Preload browser voices in case fallback is ever needed
 if (window.speechSynthesis) {
   window.speechSynthesis.getVoices();
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
+// ==================== SECURE PROXY HELPER ====================
+async function callGeminiViaProxy(modelName, payload, signal = null) {
+  const customKey = getApiKey();
+  // If user manually entered their own custom key in Settings, use direct API; otherwise use secure Proxy
+  if (customKey && customKey.length > 20) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": customKey
+      },
+      body: JSON.stringify(payload),
+      signal
+    });
+    return { ok: res.ok, data: await res.json() };
+  }
+
+  // Default: Route securely through Google Apps Script Proxy (text/plain avoids CORS preflight)
+  const res = await fetch(PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ model: modelName, payload }),
+    signal
+  });
+  const data = await res.json();
+  return { ok: !data.error && Boolean(data.candidates), data };
+}
+
 // ==================== INITIALIZATION ====================
 document.addEventListener("DOMContentLoaded", () => {
+  // Clear any old broken key saved in localStorage
+  const oldSaved = localStorage.getItem("mindora_api_key");
+  if (oldSaved && oldSaved.includes("LrOs8jPFU2")) {
+    localStorage.removeItem("mindora_api_key");
+  }
+
   applyLanguage(getCurrentLang());
   renderLanguageOptions();
   setupSidebarAndGestures();
@@ -83,9 +111,7 @@ async function loadUserPersonalization() {
     }
     document.getElementById("settings-memory-input").value = userMemory;
     document.getElementById("settings-custom-prompt").value = customSystemPrompt;
-  } catch (e) {
-    console.warn("Personalization load warning:", e);
-  }
+  } catch (e) {}
 }
 
 async function loadSecurityPin() {
@@ -94,9 +120,7 @@ async function loadSecurityPin() {
     const snap = await getDoc(doc(db, "users", currentUser.uid, "settings", "security"));
     securityPin = snap.exists() ? snap.data().pin || null : null;
     updatePinStatusUI();
-  } catch (e) {
-    console.warn("Security load warning:", e);
-  }
+  } catch (e) {}
 }
 
 function updatePinStatusUI() {
@@ -108,7 +132,7 @@ function updatePinStatusUI() {
   }
 }
 
-// ==================== 2. SIDEBAR, SWIPE GESTURES & 5-SEC PROFILE HOLD ====================
+// ==================== 2. SIDEBAR, SWIPE GESTURES & 5-SEC HOLD ====================
 function setupSidebarAndGestures() {
   const sidebar = document.getElementById("sidebar");
   const backdrop = document.getElementById("sidebar-backdrop");
@@ -143,11 +167,8 @@ function setupSidebarAndGestures() {
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
 
     if (dy < 60) {
-      if (dx > 75 && touchStartX < 100) {
-        openSidebar();
-      } else if (dx < -75 && !sidebar.classList.contains("-translate-x-full")) {
-        closeSidebar();
-      }
+      if (dx > 75 && touchStartX < 100) openSidebar();
+      else if (dx < -75 && !sidebar.classList.contains("-translate-x-full")) closeSidebar();
     }
   }, { passive: true });
 
@@ -158,7 +179,6 @@ function setupSidebarAndGestures() {
     closeSidebar();
   };
 
-  // Profile Button: Quick Tap = Settings | 5-Second Long Press = Hidden Vault
   const profileBtn = document.getElementById("profile-hold-btn");
   let holdTimer = null;
   let longPressTriggered = false;
@@ -205,14 +225,12 @@ function setupSidebarAndGestures() {
   });
 }
 
-// ==================== 3. CHAT LIST, PIN, LOCK, HIDE & HIDDEN VAULT ====================
+// ==================== 3. CHAT LIST, PIN, LOCK, HIDE & VAULT ====================
 function subscribeToChats() {
   const q = query(collection(db, "users", currentUser.uid, "chats"), orderBy("updatedAt", "desc"));
   onSnapshot(q, (snapshot) => {
     allChats = [];
-    snapshot.forEach((d) => {
-      allChats.push({ id: d.id, ...d.data() });
-    });
+    snapshot.forEach((d) => allChats.push({ id: d.id, ...d.data() }));
     renderChatList();
     renderVaultList();
   });
@@ -296,18 +314,14 @@ function openChatContextMenu(event, chat) {
 
 document.getElementById("ctx-pin-btn").onclick = async () => {
   if (!targetContextChat) return;
-  await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), {
-    pinned: !targetContextChat.pinned
-  });
+  await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), { pinned: !targetContextChat.pinned });
 };
 
 document.getElementById("ctx-rename-btn").onclick = async () => {
   if (!targetContextChat) return;
   const newTitle = prompt("Rename conversation:", targetContextChat.title || "");
   if (newTitle && newTitle.trim()) {
-    await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), {
-      title: newTitle.trim()
-    });
+    await updateDoc(doc(db, "users", currentUser.uid, "chats", targetContextChat.id), { title: newTitle.trim() });
   }
 };
 
@@ -317,9 +331,7 @@ document.getElementById("ctx-lock-btn").onclick = () => {
   const mode = securityPin ? "verify" : "setup";
   openPinModal(mode, async () => {
     const nextLocked = !chat.locked;
-    await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), {
-      locked: nextLocked
-    });
+    await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), { locked: nextLocked });
     if (!nextLocked) unlockedChatsSession.add(chat.id);
   });
 };
@@ -329,9 +341,7 @@ document.getElementById("ctx-hide-btn").onclick = () => {
   const chat = targetContextChat;
   const mode = securityPin ? "verify" : "setup";
   openPinModal(mode, async () => {
-    await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), {
-      hidden: true
-    });
+    await updateDoc(doc(db, "users", currentUser.uid, "chats", chat.id), { hidden: true });
     if (currentChatId === chat.id) startNewChat();
   });
 };
@@ -543,9 +553,7 @@ document.getElementById("pin-submit-btn").onclick = async () => {
 document.getElementById("forgot-pin-trigger-btn").onclick = () => {
   document.getElementById("pin-modal").classList.add("hidden");
   openForgotPinVerification(() => {
-    openPinModal("setup", () => {
-      alert("New Security PIN set!");
-    });
+    openPinModal("setup", () => alert("New Security PIN set!"));
   });
 };
 
@@ -668,7 +676,6 @@ function createMessageElement(msg, index) {
   bubble.appendChild(bodyDiv);
   col.appendChild(bubble);
 
-  // Action Pills
   const actions = document.createElement("div");
   actions.className = "msg-actions";
 
@@ -826,15 +833,13 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. REAL HUMAN NEURAL STUDIO TTS ENGINE ====================
+// ==================== 6. NEURAL STUDIO VOICE ENGINE ====================
 function stopCurrentSpeech() {
   if (activeAudioPlayer) {
     activeAudioPlayer.pause();
     activeAudioPlayer = null;
   }
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
   if (activeAudioBtn) {
     activeAudioBtn.classList.remove("speaking-active");
     activeAudioBtn.querySelector("span").textContent = "Listen";
@@ -867,9 +872,7 @@ function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
   view.setUint32(40, pcmLength, true);
 
   const bytes = new Uint8Array(wavBuffer, 44);
-  for (let i = 0; i < pcmLength; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
-  }
+  for (let i = 0; i < pcmLength; i++) bytes[i] = binaryStr.charCodeAt(i);
 
   return URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
 }
@@ -885,37 +888,24 @@ async function fetchGeminiNeuralAudioUrl(text, voiceName) {
 
   if (!cleanSpeechText) return null;
 
-  // Dedicated Gemini Native Neural TTS Models
   const ttsModels = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
   for (const model of ttsModels) {
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-goog-api-key": getApiKey()
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: cleanSpeechText }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName }
-              }
-            }
+      const { ok, data } = await callGeminiViaProxy(model, {
+        contents: [{ parts: [{ text: cleanSpeechText }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } }
           }
-        })
+        }
       });
 
-      const data = await res.json();
-      const inlineData = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+      const inlineData = ok ? data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData : null;
       if (inlineData?.data) {
         return pcmBase64ToWavUrl(inlineData.data, 24000);
       }
-    } catch (e) {
-      console.warn("Neural TTS attempt failed:", model, e);
-    }
+    } catch (e) {}
   }
   return null;
 }
@@ -1063,11 +1053,8 @@ function setupChatInputAndTools() {
       document.getElementById("attachment-preview").classList.remove("hidden");
     };
 
-    if (isBinaryMultimodal) {
-      reader.readAsDataURL(file);
-    } else {
-      reader.readAsText(file);
-    }
+    if (isBinaryMultimodal) reader.readAsDataURL(file);
+    else reader.readAsText(file);
     e.target.value = "";
   };
 
@@ -1113,7 +1100,23 @@ function setStreamingState(active) {
   }
 }
 
-// ==================== 8. ROCK-SOLID DUAL-FALLBACK AI PIPELINE ====================
+// ==================== 8. SMOOTH TYPEWRITER STREAMING VIA SECURE PROXY ====================
+async function animateTextStream(targetEl, fullText, boxEl, signal) {
+  const words = fullText.split(/(\s+)/);
+  let rendered = "";
+  const step = Math.max(2, Math.ceil(words.length / 65));
+
+  for (let i = 0; i < words.length; i += step) {
+    if (signal && signal.aborted) break;
+    rendered += words.slice(i, i + step).join("");
+    targetEl.innerHTML = marked.parse(rendered);
+    boxEl.scrollTop = boxEl.scrollHeight;
+    await new Promise((r) => setTimeout(r, 16));
+  }
+  targetEl.innerHTML = marked.parse(rendered || fullText);
+  return rendered || fullText;
+}
+
 async function sendPromptPipeline(overrideText = null, liveVoiceCallback = null) {
   const input = document.getElementById("chat-input");
   const rawText = (overrideText !== null ? overrideText : input.value).trim();
@@ -1213,7 +1216,7 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
     finalUserPrompt += `\n\n--- Attached File (${filePayload.name}) ---\n${filePayload.textContent.slice(0, 25000)}`;
   }
 
-  const userParts = [{ text: finalUserPrompt }];
+  const userParts = [{ text: `[System Context: ${systemGuide}]\n\n${finalUserPrompt}` }];
   if (filePayload?.base64) {
     userParts.push({ inline_data: { mime_type: filePayload.mime, data: filePayload.base64 } });
   }
@@ -1223,118 +1226,32 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
     parts: [{ text: m.text }]
   }));
 
-  const fullPayload = {
-    system_instruction: { parts: [{ text: systemGuide }] },
+  const payload = {
     contents: [...historyContents, { role: "user", parts: userParts }]
   };
 
-  // Fallback payload with system instructions merged directly into prompt
-  const directPayload = {
-    contents: [
-      ...historyContents,
-      {
-        role: "user",
-        parts: [
-          { text: `[System Context: ${systemGuide}]\n\n${finalUserPrompt}` },
-          ...(filePayload?.base64 ? [{ inline_data: { mime_type: filePayload.mime, data: filePayload.base64 } }] : [])
-        ]
-      }
-    ]
-  };
-
-  let accumulatedText = "";
+  let finalReply = "";
   let succeeded = false;
   let lastApiError = "";
 
   for (const modelName of modelSpec.chain) {
     if (streamAbortController.signal.aborted) break;
-
-    // 1. Try Fast SSE Streaming First
     try {
-      const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse`;
-      const response = await fetch(streamUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-goog-api-key": getApiKey()
-        },
-        body: JSON.stringify(fullPayload),
-        signal: streamAbortController.signal
-      });
-
-      if (response.ok && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const jsonStr = line.slice(6).trim();
-              if (!jsonStr || jsonStr === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(jsonStr);
-                const chunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                if (chunk) {
-                  accumulatedText += chunk;
-                  textTarget.innerHTML = marked.parse(accumulatedText);
-                  box.scrollTop = box.scrollHeight;
-                }
-              } catch (e) {}
-            }
-          }
-        }
-
-        if (accumulatedText) {
-          succeeded = true;
-          break;
-        }
+      const { ok, data } = await callGeminiViaProxy(modelName, payload, streamAbortController.signal);
+      if (ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const rawReply = data.candidates[0].content.parts[0].text;
+        finalReply = await animateTextStream(textTarget, rawReply, box, streamAbortController.signal);
+        succeeded = true;
+        break;
+      } else if (data.error?.message) {
+        lastApiError = data.error.message;
       }
     } catch (err) {
       if (err.name === "AbortError") {
         succeeded = true;
         break;
       }
-    }
-
-    // 2. Instant Standard :generateContent Fallback (100% compatible with AQ. keys)
-    if (!succeeded && !streamAbortController.signal.aborted) {
-      try {
-        const stdUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
-        const res = await fetch(stdUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-goog-api-key": getApiKey()
-          },
-          body: JSON.stringify(directPayload),
-          signal: streamAbortController.signal
-        });
-
-        const data = await res.json();
-        if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          accumulatedText = data.candidates[0].content.parts[0].text;
-          textTarget.innerHTML = marked.parse(accumulatedText);
-          box.scrollTop = box.scrollHeight;
-          succeeded = true;
-          break;
-        } else if (data.error?.message) {
-          lastApiError = data.error.message;
-        }
-      } catch (err) {
-        if (err.name === "AbortError") {
-          succeeded = true;
-          break;
-        }
-        lastApiError = err.message;
-      }
+      lastApiError = err.message;
     }
   }
 
@@ -1342,34 +1259,27 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   renderMathSafe(textTarget);
   setStreamingState(false);
 
-  if (!succeeded && !accumulatedText) {
-    accumulatedText = `**API Error:** ${lastApiError || "Unable to connect. Please verify your API key in Settings."}`;
-    textTarget.innerHTML = marked.parse(accumulatedText);
+  if (!succeeded && !finalReply) {
+    finalReply = `**Error:** ${lastApiError || "Unable to connect. Please try again."}`;
+    textTarget.innerHTML = marked.parse(finalReply);
   }
 
   await addDoc(collection(db, "users", currentUser.uid, "chats", currentChatId, "messages"), {
     role: "model",
-    text: accumulatedText,
+    text: finalReply,
     createdAt: serverTimestamp()
   });
 
   loadChatMessages(currentChatId);
 
-  if (liveVoiceCallback && succeeded) liveVoiceCallback(accumulatedText);
+  if (liveVoiceCallback && succeeded) liveVoiceCallback(finalReply);
 }
 
 async function callGeminiSingleShot(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-goog-api-key": getApiKey()
-    },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+  const { ok, data } = await callGeminiViaProxy("gemini-flash-latest", {
+    contents: [{ parts: [{ text: prompt }] }]
   });
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return ok ? data.candidates?.[0]?.content?.parts?.[0]?.text || "" : "";
 }
 
 async function autoCaptureMemory(text) {
@@ -1435,9 +1345,7 @@ function setupModalsAndSettings() {
   };
 
   document.getElementById("open-change-pin-btn").onclick = () => {
-    openPinModal(securityPin ? "change" : "setup", () => {
-      updatePinStatusUI();
-    });
+    openPinModal(securityPin ? "change" : "setup", () => updatePinStatusUI());
   };
 
   document.getElementById("open-forgot-pin-btn").onclick = () => {
@@ -1537,9 +1445,7 @@ function setupLiveVoiceEngine() {
       const transcript = event.results[0][0].transcript;
       if (isLiveActive) {
         statusText.textContent = `"${transcript}"`;
-        sendPromptPipeline(transcript, (aiReply) => {
-          speakInLiveMode(aiReply, recognition);
-        });
+        sendPromptPipeline(transcript, (aiReply) => speakInLiveMode(aiReply, recognition));
       } else {
         const input = document.getElementById("chat-input");
         input.value = (input.value + " " + transcript).trim();
@@ -1549,9 +1455,7 @@ function setupLiveVoiceEngine() {
 
     recognition.onend = () => {
       if (isLiveActive && !isLiveMuted && !isLiveAudioPlaying()) {
-        try {
-          recognition.start();
-        } catch (e) {}
+        try { recognition.start(); } catch (e) {}
       }
     };
   }
@@ -1561,9 +1465,7 @@ function setupLiveVoiceEngine() {
       orb.classList.remove("speaking");
       if (isLiveActive && !isLiveMuted && rec) {
         statusText.textContent = "Listening... Go ahead.";
-        try {
-          rec.start();
-        } catch (e) {}
+        try { rec.start(); } catch (e) {}
       }
     };
 
@@ -1628,9 +1530,7 @@ function setupLiveVoiceEngine() {
     document.getElementById("live-mute-icon").className = "fa-solid fa-microphone";
     document.getElementById("live-overlay").classList.remove("hidden");
     statusText.textContent = "Listening... Speak in any language.";
-    try {
-      recognition.start();
-    } catch (e) {}
+    try { recognition.start(); } catch (e) {}
   };
 
   document.getElementById("live-mute-btn").onclick = () => {
@@ -1645,11 +1545,7 @@ function setupLiveVoiceEngine() {
       orb.classList.remove("muted");
       icon.className = "fa-solid fa-microphone";
       statusText.textContent = "Listening...";
-      if (recognition) {
-        try {
-          recognition.start();
-        } catch (e) {}
-      }
+      if (recognition) try { recognition.start(); } catch (e) {}
     }
   };
 
