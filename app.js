@@ -1,4 +1,4 @@
-// app.js — MinDora AI Core Engine (100% Google Gemini Native Voice & Image + Unlimited Fallback + 6-Tap Vault)
+// app.js — MinDora AI Core Engine (Unlimited Free Edge Neural TTS, Gemini Audio/Image + AI Horde & 6-Tap Vault)
 import { auth, db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
@@ -173,13 +173,13 @@ let textSyncInterval = null;
 let chatsSubscribedUid = null;
 const voicePreviewCache = {};
 
-// Gemini Native Studio Voices (100% powered by user's Google Gemini API key)
-const GEMINI_STUDIO_VOICES = [
-  { id: "Aoede", name: "Aoede", tag: "Warm & Expressive", label: "Aoede (Warm & Expressive)" },
-  { id: "Puck", name: "Puck", tag: "Natural & Friendly", label: "Puck (Natural & Friendly)" },
-  { id: "Kore", name: "Kore", tag: "Soft & Clear", label: "Kore (Soft & Clear)" },
-  { id: "Charon", name: "Charon", tag: "Deep & Calm", label: "Charon (Deep & Calm)" },
-  { id: "Fenrir", name: "Fenrir", tag: "Bold & Energetic", label: "Fenrir (Bold & Energetic)" }
+// Unlimited Free Neural Studio Voices (Auto-adapts to Bengali, Hindi & English)
+const NEURAL_STUDIO_VOICES = [
+  { id: "tanishaa", gender: "female", gemini: "Aoede", name: "Tanishaa", tag: "Warm Female (Auto BN/HI/EN)" },
+  { id: "bashkar", gender: "male", gemini: "Charon", name: "Bashkar", tag: "Deep Male (Auto BN/HI/EN)" },
+  { id: "neerja", gender: "female", gemini: "Kore", name: "Neerja", tag: "Soft Indian Female" },
+  { id: "swara", gender: "female", gemini: "Puck", name: "Swara", tag: "Expressive Female" },
+  { id: "prabhat", gender: "male", gemini: "Fenrir", name: "Prabhat", tag: "Clear Indian Male" }
 ];
 
 const sharedAudioPlayer = new Audio();
@@ -203,37 +203,6 @@ function unlockMobileAudio() {
     sharedAudioPlayer.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
     sharedAudioPlayer.play().then(() => sharedAudioPlayer.pause()).catch(() => {});
   } catch (e) {}
-}
-
-// Convert Gemini Raw PCM (24kHz 16-bit mono) to playable WAV Blob URL
-function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
-  const binaryStr = atob(base64Pcm);
-  const pcmLen = binaryStr.length;
-  const wavBuffer = new ArrayBuffer(44 + pcmLen);
-  const view = new DataView(wavBuffer);
-
-  const writeStr = (offset, str) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-
-  writeStr(0, "RIFF");
-  view.setUint32(4, 36 + pcmLen, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // Mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, "data");
-  view.setUint32(40, pcmLen, true);
-
-  const bytes = new Uint8Array(wavBuffer, 44);
-  for (let i = 0; i < pcmLen; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-  return URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
 }
 
 // ==================== CUSTOM PREMIUM DROPDOWN ENHANCER ====================
@@ -1151,7 +1120,7 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. GOOGLE GEMINI NATIVE VOICE + UNLIMITED FALLBACK ENGINE ====================
+// ==================== 6. UNLIMITED FREE EDGE NEURAL WEBSOCKET VOICE ENGINE ====================
 function stopCurrentSpeech() {
   if (textSyncInterval) {
     clearInterval(textSyncInterval);
@@ -1185,86 +1154,181 @@ function cleanTextForSpeech(text) {
     .slice(0, 750);
 }
 
-// 100% Google Gemini Native Audio Generation (No ElevenLabs limits!)
-async function fetchGeminiAudioUrl(text, voiceName = "Aoede") {
+function escapeXml(str) {
+  return str.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c]));
+}
+
+function resolveEdgeNeuralVoice(text, voiceSpec) {
+  const isMale = voiceSpec?.gender === "male";
+  if (/[\u0980-\u09FF]/.test(text)) {
+    return { lang: "bn-IN", name: isMale ? "bn-IN-BashkarNeural" : "bn-IN-TanishaaNeural" };
+  }
+  if (/[\u0900-\u097F]/.test(text)) {
+    return { lang: "hi-IN", name: isMale ? "hi-IN-MadhurNeural" : "hi-IN-SwaraNeural" };
+  }
+  return { lang: "en-IN", name: isMale ? "en-IN-PrabhatNeural" : "en-IN-NeerjaNeural" };
+}
+
+// Direct Client-Side Microsoft Edge Neural WebSocket TTS (100% Free, Unlimited, Human Quality)
+function fetchEdgeNeuralAudioUrl(text, voiceSpec) {
+  return new Promise((resolve) => {
+    const cleanSpeechText = cleanTextForSpeech(text);
+    if (!cleanSpeechText) return resolve(null);
+
+    const { lang, name } = resolveEdgeNeuralVoice(cleanSpeechText, voiceSpec);
+    const reqId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/-/g, "");
+    const wsUrl = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+
+    let resolved = false;
+    const chunks = [];
+    let ws;
+
+    const finish = (url) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      try { if (ws && ws.readyState <= 1) ws.close(); } catch (e) {}
+      resolve(url);
+    };
+
+    const timer = setTimeout(() => finish(null), 6500);
+
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        const ts = new Date().toISOString();
+        const configMsg =
+          `X-Timestamp:${ts}\r\n` +
+          `Content-Type:application/json; charset=utf-8\r\n` +
+          `Path:speech.config\r\n\r\n` +
+          `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+        ws.send(configMsg);
+
+        const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${lang}'><voice name='${name}'><prosody pitch='+0Hz' rate='+2%' volume='+0%'>${escapeXml(cleanSpeechText)}</prosody></voice></speak>`;
+        const ssmlMsg =
+          `X-RequestId:${reqId}\r\n` +
+          `Content-Type:application/ssml+xml\r\n` +
+          `X-Timestamp:${ts}Z\r\n` +
+          `Path:ssml\r\n\r\n` +
+          ssml;
+        ws.send(ssmlMsg);
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === "string") {
+          if (event.data.includes("Path:turn.end")) {
+            if (chunks.length > 0) {
+              const mp3Blob = new Blob(chunks, { type: "audio/mpeg" });
+              finish(URL.createObjectURL(mp3Blob));
+            } else {
+              finish(null);
+            }
+          }
+        } else if (event.data instanceof ArrayBuffer) {
+          const view = new DataView(event.data);
+          if (view.byteLength > 2) {
+            const headerLen = view.getUint16(0);
+            if (view.byteLength > headerLen + 2) {
+              chunks.push(event.data.slice(headerLen + 2));
+            }
+          }
+        }
+      };
+
+      ws.onerror = () => finish(null);
+      ws.onclose = () => {
+        if (!resolved) {
+          if (chunks.length > 0) {
+            const mp3Blob = new Blob(chunks, { type: "audio/mpeg" });
+            finish(URL.createObjectURL(mp3Blob));
+          } else {
+            finish(null);
+          }
+        }
+      };
+    } catch (e) {
+      finish(null);
+    }
+  });
+}
+
+// Secondary Backup: Google Gemini Native Audio
+function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
+  const binaryStr = atob(base64Pcm);
+  const pcmLen = binaryStr.length;
+  const wavBuffer = new ArrayBuffer(44 + pcmLen);
+  const view = new DataView(wavBuffer);
+
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + pcmLen, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, pcmLen, true);
+
+  const bytes = new Uint8Array(wavBuffer, 44);
+  for (let i = 0; i < pcmLen; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+  return URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
+}
+
+async function fetchGeminiAudioBackup(text, geminiVoice = "Aoede") {
   const apiKey = getApiKey();
   const cleanSpeechText = cleanTextForSpeech(text);
   if (!apiKey || !cleanSpeechText) return null;
 
-  const audioModels = [
-    "gemini-2.5-flash-preview-tts",
-    "gemini-2.0-flash",
-    "gemini-2.5-flash"
-  ];
-
-  for (const modelName of audioModels) {
-    try {
-      const isTtsModel = modelName.includes("-tts");
-      const bodyPayload = isTtsModel
-        ? {
-            contents: [{ parts: [{ text: cleanSpeechText }] }],
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName }
-                }
-              }
-            }
+  try {
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": apiKey
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: cleanSpeechText }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: geminiVoice } } }
           }
-        : {
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Read aloud the following text naturally, warmly, and clearly in its exact original language without adding or changing any words:\n\n${cleanSpeechText}`
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName }
-                }
-              }
-            }
-          };
-
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-goog-api-key": apiKey
-          },
-          body: JSON.stringify(bodyPayload)
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        const parts = data.candidates?.[0]?.content?.parts || [];
-        const audioPart = parts.find((p) => p.inlineData?.data || p.inline_data?.data);
-        const inlineObj = audioPart?.inlineData || audioPart?.inline_data;
-        if (inlineObj?.data) {
-          const mime = (inlineObj.mimeType || inlineObj.mime_type || "").toLowerCase();
-          if (mime.includes("wav") || mime.includes("mp3") || mime.includes("ogg")) {
-            return `data:${mime};base64,${inlineObj.data}`;
-          }
-          const rateMatch = mime.match(/rate=(\d+)/);
-          const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
-          return pcmBase64ToWavUrl(inlineObj.data, sampleRate);
-        }
+        })
       }
-    } catch (e) {}
-  }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      const audioPart = parts.find((p) => p.inlineData?.data || p.inline_data?.data);
+      const inlineObj = audioPart?.inlineData || audioPart?.inline_data;
+      if (inlineObj?.data) {
+        const mime = (inlineObj.mimeType || inlineObj.mime_type || "").toLowerCase();
+        const rateMatch = mime.match(/rate=(\d+)/);
+        return pcmBase64ToWavUrl(inlineObj.data, rateMatch ? parseInt(rateMatch[1], 10) : 24000);
+      }
+    }
+  } catch (e) {}
   return null;
 }
 
-// Instant Unlimited Fallback (Device Neural TTS when offline/rate-limited)
+async function getBestHumanAudioUrl(text, voiceSpec) {
+  const edgeUrl = await fetchEdgeNeuralAudioUrl(text, voiceSpec);
+  if (edgeUrl) return edgeUrl;
+  return await fetchGeminiAudioBackup(text, voiceSpec?.gemini || "Aoede");
+}
+
 function speakWithDeviceFallback(text, onStart, onEnd) {
   const cleanSpeechText = cleanTextForSpeech(text);
   if (!cleanSpeechText || typeof window.speechSynthesis === "undefined") {
@@ -1284,17 +1348,9 @@ function speakWithDeviceFallback(text, onStart, onEnd) {
     voices.find((v) => v.lang.toLowerCase().startsWith(utter.lang.slice(0, 2).toLowerCase()));
   if (matchedVoice) utter.voice = matchedVoice;
 
-  utter.rate = 1.0;
-  utter.pitch = 1.02;
-  utter.onstart = () => {
-    if (onStart) onStart();
-  };
-  utter.onend = () => {
-    if (onEnd) onEnd();
-  };
-  utter.onerror = () => {
-    if (onEnd) onEnd();
-  };
+  utter.onstart = () => { if (onStart) onStart(); };
+  utter.onend = () => { if (onEnd) onEnd(); };
+  utter.onerror = () => { if (onEnd) onEnd(); };
   window.speechSynthesis.speak(utter);
 }
 
@@ -1309,23 +1365,21 @@ async function toggleNeuralListen(text, btnEl) {
   btnEl.classList.add("speaking-active");
   btnEl.querySelector("span").textContent = "Loading...";
 
-  const voiceName = GEMINI_STUDIO_VOICES[studioVoiceIndex]?.id || "Aoede";
-  const wavUrl = await fetchGeminiAudioUrl(text, voiceName);
+  const voiceSpec = NEURAL_STUDIO_VOICES[studioVoiceIndex] || NEURAL_STUDIO_VOICES[0];
+  const audioUrl = await getBestHumanAudioUrl(text, voiceSpec);
 
   if (activeAudioBtn !== btnEl) return;
 
-  if (wavUrl) {
+  if (audioUrl) {
     btnEl.querySelector("span").textContent = "Stop";
-    sharedAudioPlayer.src = wavUrl;
+    sharedAudioPlayer.src = audioUrl;
     sharedAudioPlayer.onended = () => stopCurrentSpeech();
     sharedAudioPlayer.onerror = () => stopCurrentSpeech();
     sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else {
     speakWithDeviceFallback(
       text,
-      () => {
-        if (activeAudioBtn === btnEl) btnEl.querySelector("span").textContent = "Stop";
-      },
+      () => { if (activeAudioBtn === btnEl) btnEl.querySelector("span").textContent = "Stop"; },
       () => stopCurrentSpeech()
     );
   }
@@ -1346,7 +1400,7 @@ function renderCustomVoiceListUI() {
   }
 
   listContainer.innerHTML = "";
-  GEMINI_STUDIO_VOICES.forEach((voice, idx) => {
+  NEURAL_STUDIO_VOICES.forEach((voice, idx) => {
     const isSelected = idx === studioVoiceIndex;
     const isPlayingThis = activePreviewVoiceId === voice.id;
 
@@ -1404,18 +1458,18 @@ function renderCustomVoiceListUI() {
       activePreviewVoiceId = voice.id;
       playBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-xs"></i>`;
 
-      const sampleText = `Hello! I am ${voice.name}, powered by Google Gemini. How can I help you today?`;
-      let wavUrl = voicePreviewCache[voice.id];
-      if (!wavUrl) {
-        wavUrl = await fetchGeminiAudioUrl(sampleText, voice.id);
-        if (wavUrl) voicePreviewCache[voice.id] = wavUrl;
+      const sampleText = `নমস্কার! আমি ${voice.name}, আপনার পার্সোনাল এআই অ্যাসিস্ট্যান্ট। কেমন আছেন?`;
+      let audioUrl = voicePreviewCache[voice.id];
+      if (!audioUrl) {
+        audioUrl = await getBestHumanAudioUrl(sampleText, voice);
+        if (audioUrl) voicePreviewCache[voice.id] = audioUrl;
       }
 
       if (activePreviewVoiceId !== voice.id) return;
 
-      if (wavUrl) {
+      if (audioUrl) {
         renderCustomVoiceListUI();
-        sharedAudioPlayer.src = wavUrl;
+        sharedAudioPlayer.src = audioUrl;
         sharedAudioPlayer.onended = () => {
           activePreviewVoiceId = null;
           renderCustomVoiceListUI();
@@ -1856,7 +1910,7 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
     </div>
     <div class="ai-bubble px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
       <i class="fa-solid fa-spinner fa-spin"></i>
-      <span>Generating Gemini HD artwork for "${escapeHtml(prompt)}"...</span>
+      <span>Generating HD artwork for "${escapeHtml(prompt)}"...</span>
     </div>
   `;
   box.appendChild(loadingRow);
@@ -2094,7 +2148,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE SYNCHRONIZED TEXT & VOICE ENGINE ====================
+// ==================== 11. LIVE SYNCHRONIZED TEXT & EDGE NEURAL VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -2123,10 +2177,10 @@ function setupLiveVoiceEngine() {
   let isMicStarting = false;
 
   const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
-  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % GEMINI_STUDIO_VOICES.length;
+  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % NEURAL_STUDIO_VOICES.length;
   const voiceLabelEl = document.getElementById("live-voice-label");
   if (voiceLabelEl) {
-    voiceLabelEl.textContent = GEMINI_STUDIO_VOICES[studioVoiceIndex].name;
+    voiceLabelEl.textContent = NEURAL_STUDIO_VOICES[studioVoiceIndex].name;
   }
 
   function detectLanguageFromText(text) {
@@ -2188,23 +2242,23 @@ function setupLiveVoiceEngine() {
           textSyncInterval = null;
         }
       }
-    }, 110);
+    }, 100);
   }
 
   async function playLiveOverlayPreview(voiceIdx) {
     unlockMobileAudio();
-    const voiceObj = GEMINI_STUDIO_VOICES[voiceIdx] || GEMINI_STUDIO_VOICES[0];
-    const sampleText = `Hello! I am ${voiceObj.name}. Speak to me in English, Bengali, or Hindi!`;
+    const voiceObj = NEURAL_STUDIO_VOICES[voiceIdx] || NEURAL_STUDIO_VOICES[0];
+    const sampleText = `নমস্কার! আমি ${voiceObj.name}। বাংলা, হিন্দি বা ইংরেজিতে কথা বলুন!`;
 
     stopAllLiveAudio();
     try { if (recognition) recognition.abort(); } catch (e) {}
 
     if (statusText) statusText.textContent = `Loading ${voiceObj.name} preview...`;
 
-    let wavUrl = voicePreviewCache[voiceObj.id];
-    if (!wavUrl) {
-      wavUrl = await fetchGeminiAudioUrl(sampleText, voiceObj.id);
-      if (wavUrl) voicePreviewCache[voiceObj.id] = wavUrl;
+    let audioUrl = voicePreviewCache[voiceObj.id];
+    if (!audioUrl) {
+      audioUrl = await getBestHumanAudioUrl(sampleText, voiceObj);
+      if (audioUrl) voicePreviewCache[voiceObj.id] = audioUrl;
     }
 
     const finishPreview = () => {
@@ -2218,9 +2272,9 @@ function setupLiveVoiceEngine() {
       }
     };
 
-    if (wavUrl) {
+    if (audioUrl) {
       isAiSpeakingTurn = true;
-      sharedAudioPlayer.src = wavUrl;
+      sharedAudioPlayer.src = audioUrl;
       sharedAudioPlayer.onplay = () => {
         setLiveTurnUI("speaking");
         revealTextSyncedWithAudio(sampleText, false);
@@ -2377,16 +2431,16 @@ function setupLiveVoiceEngine() {
     setLiveTurnUI("thinking");
     if (statusText) statusText.textContent = "Thinking...";
 
-    const voiceName = GEMINI_STUDIO_VOICES[studioVoiceIndex]?.id || "Aoede";
-    const wavUrl = await fetchGeminiAudioUrl(cleanDisplay, voiceName);
+    const voiceSpec = NEURAL_STUDIO_VOICES[studioVoiceIndex] || NEURAL_STUDIO_VOICES[0];
+    const audioUrl = await getBestHumanAudioUrl(cleanDisplay, voiceSpec);
 
     if (!isLiveActive || !isLiveSpeakerOn || !isAiSpeakingTurn) {
       finishSpeakingTurn();
       return;
     }
 
-    if (wavUrl) {
-      sharedAudioPlayer.src = wavUrl;
+    if (audioUrl) {
+      sharedAudioPlayer.src = audioUrl;
       sharedAudioPlayer.onplay = () => {
         setLiveTurnUI("speaking");
         revealTextSyncedWithAudio(cleanDisplay.slice(0, 260), false);
@@ -2475,9 +2529,9 @@ function setupLiveVoiceEngine() {
   };
 
   document.getElementById("live-voice-style-btn").onclick = () => {
-    studioVoiceIndex = (studioVoiceIndex + 1) % GEMINI_STUDIO_VOICES.length;
+    studioVoiceIndex = (studioVoiceIndex + 1) % NEURAL_STUDIO_VOICES.length;
     localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-    const vName = GEMINI_STUDIO_VOICES[studioVoiceIndex].name;
+    const vName = NEURAL_STUDIO_VOICES[studioVoiceIndex].name;
     if (voiceLabelEl) voiceLabelEl.textContent = vName;
     renderCustomVoiceListUI();
     playLiveOverlayPreview(studioVoiceIndex);
