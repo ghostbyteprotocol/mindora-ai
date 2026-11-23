@@ -1,5 +1,5 @@
-// app.js — MinDora AI Core Engine (Guaranteed 4-Engine HD Image Gen, ElevenLabs v3, Persistent Auth & 6-Tap Vault)
-import { auth, db, getApiKey, getElevenLabsKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
+// app.js — MinDora AI Core Engine (100% Google Gemini Native Voice & Image + Unlimited Fallback + 6-Tap Vault)
+import { auth, db, getApiKey, MINDORA_MODELS, STUDIO_VOICES, QUICK_MODES } from "./config.js";
 import { SUPPORTED_LANGUAGES, getCurrentLang, applyLanguage, t } from "./lang.js";
 import { initAuth, openForgotPinVerification } from "./auth.js";
 import {
@@ -61,7 +61,7 @@ function showCustomToast(message, type = "info") {
   setTimeout(() => {
     toast.classList.add("opacity-0", "-translate-y-2");
     setTimeout(() => toast.remove(), 300);
-  }, 3500);
+  }, 3200);
 }
 
 window.alert = (msg) => showCustomToast(msg, "info");
@@ -168,13 +168,19 @@ let isLiveActive = false;
 let isLiveMuted = false;
 let isLiveSpeakerOn = true;
 let studioVoiceIndex = 0;
-let activeVoicesList = [...STUDIO_VOICES];
-let voicesSyncedFromApi = false;
-let lastElevenLabsError = "";
 let activePreviewVoiceId = null;
 let textSyncInterval = null;
 let chatsSubscribedUid = null;
 const voicePreviewCache = {};
+
+// Gemini Native Studio Voices (100% powered by user's Google Gemini API key)
+const GEMINI_STUDIO_VOICES = [
+  { id: "Aoede", name: "Aoede", tag: "Warm & Expressive", label: "Aoede (Warm & Expressive)" },
+  { id: "Puck", name: "Puck", tag: "Natural & Friendly", label: "Puck (Natural & Friendly)" },
+  { id: "Kore", name: "Kore", tag: "Soft & Clear", label: "Kore (Soft & Clear)" },
+  { id: "Charon", name: "Charon", tag: "Deep & Calm", label: "Charon (Deep & Calm)" },
+  { id: "Fenrir", name: "Fenrir", tag: "Bold & Energetic", label: "Fenrir (Bold & Energetic)" }
+];
 
 const sharedAudioPlayer = new Audio();
 sharedAudioPlayer.preload = "auto";
@@ -192,18 +198,6 @@ Identity & Developer Knowledge (Follow these exact rules ONLY when asked about y
 5. Do NOT bring up your developer in normal everyday queries unrelated to you or your creator.
 `;
 
-function getActiveElevenLabsKey() {
-  const localEl = localStorage.getItem("mindora_el_key");
-  if (localEl && localEl.trim().length > 10) return localEl.trim();
-  return getElevenLabsKey();
-}
-
-function getActiveDeepAiKey() {
-  const localDeep = localStorage.getItem("mindora_deepai_key");
-  if (localDeep && localDeep.trim().length > 10) return localDeep.trim();
-  return "332e721e-84ee-4758-861a-98fd8d64fe48";
-}
-
 function unlockMobileAudio() {
   try {
     sharedAudioPlayer.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
@@ -211,34 +205,35 @@ function unlockMobileAudio() {
   } catch (e) {}
 }
 
-async function syncElevenLabsVoices() {
-  if (voicesSyncedFromApi) return;
-  const elKey = getActiveElevenLabsKey();
-  if (!elKey) return;
+// Convert Gemini Raw PCM (24kHz 16-bit mono) to playable WAV Blob URL
+function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
+  const binaryStr = atob(base64Pcm);
+  const pcmLen = binaryStr.length;
+  const wavBuffer = new ArrayBuffer(44 + pcmLen);
+  const view = new DataView(wavBuffer);
 
-  try {
-    const res = await fetch("https://api.elevenlabs.io/v1/voices", {
-      headers: { "xi-api-key": elKey }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.voices) && data.voices.length > 0) {
-        activeVoicesList = data.voices.slice(0, 8).map((v) => ({
-          id: v.voice_id,
-          name: v.name,
-          tag: v.labels?.accent || v.category || "Natural",
-          label: `${v.name} (${v.labels?.accent || v.category || "Natural"})`
-        }));
-        voicesSyncedFromApi = true;
-        studioVoiceIndex = studioVoiceIndex % activeVoicesList.length;
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
 
-        const voiceLabelEl = document.getElementById("live-voice-label");
-        if (voiceLabelEl) voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].name || activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + pcmLen, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // Mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, pcmLen, true);
 
-        renderCustomVoiceListUI();
-      }
-    }
-  } catch (e) {}
+  const bytes = new Uint8Array(wavBuffer, 44);
+  for (let i = 0; i < pcmLen; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+  return URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
 }
 
 // ==================== CUSTOM PREMIUM DROPDOWN ENHANCER ====================
@@ -363,7 +358,11 @@ document.addEventListener("DOMContentLoaded", () => {
   setupChatInputAndTools();
   setupModalsAndSettings();
   setupLiveVoiceEngine();
-  syncElevenLabsVoices();
+
+  if (typeof window.speechSynthesis !== "undefined") {
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+  }
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -1152,11 +1151,14 @@ async function downloadImageHD(url) {
   }
 }
 
-// ==================== 6. ELEVENLABS V3 (70+ LANGUAGES: BENGALI, HINDI, ENGLISH) ====================
+// ==================== 6. GOOGLE GEMINI NATIVE VOICE + UNLIMITED FALLBACK ENGINE ====================
 function stopCurrentSpeech() {
   if (textSyncInterval) {
     clearInterval(textSyncInterval);
     textSyncInterval = null;
+  }
+  if (typeof window.speechSynthesis !== "undefined") {
+    window.speechSynthesis.cancel();
   }
   sharedAudioPlayer.pause();
   sharedAudioPlayer.onplay = null;
@@ -1173,65 +1175,127 @@ function stopCurrentSpeech() {
   }
 }
 
-async function fetchElevenLabsAudioUrl(text, voiceId) {
-  const elKey = getActiveElevenLabsKey();
-  if (!elKey) {
-    lastElevenLabsError = "ElevenLabs API Key is missing.";
-    return null;
-  }
-
-  if (!voicesSyncedFromApi) {
-    syncElevenLabsVoices();
-  }
-  const validVoiceId = voiceId || activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
-
-  const cleanSpeechText = text
+function cleanTextForSpeech(text) {
+  return text
     .replace(/```[\s\S]*?```/g, " Code block is shown on screen. ")
     .replace(/\$\$[\s\S]*?\$\$/g, " equation ")
     .replace(/\$/g, "")
     .replace(/[*#`_~>]/g, "")
     .trim()
     .slice(0, 750);
+}
 
-  if (!cleanSpeechText) return null;
+// 100% Google Gemini Native Audio Generation (No ElevenLabs limits!)
+async function fetchGeminiAudioUrl(text, voiceName = "Aoede") {
+  const apiKey = getApiKey();
+  const cleanSpeechText = cleanTextForSpeech(text);
+  if (!apiKey || !cleanSpeechText) return null;
 
-  const models = ["eleven_v3", "eleven_multilingual_v2"];
-  for (const model_id of models) {
+  const audioModels = [
+    "gemini-2.5-flash-preview-tts",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash"
+  ];
+
+  for (const modelName of audioModels) {
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${validVoiceId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "xi-api-key": elKey,
-          "Accept": "audio/mpeg"
-        },
-        body: JSON.stringify({
-          text: cleanSpeechText,
-          model_id,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.78
+      const isTtsModel = modelName.includes("-tts");
+      const bodyPayload = isTtsModel
+        ? {
+            contents: [{ parts: [{ text: cleanSpeechText }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName }
+                }
+              }
+            }
           }
-        })
-      });
+        : {
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Read aloud the following text naturally, warmly, and clearly in its exact original language without adding or changing any words:\n\n${cleanSpeechText}`
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName }
+                }
+              }
+            }
+          };
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": apiKey
+          },
+          body: JSON.stringify(bodyPayload)
+        }
+      );
 
       if (res.ok) {
-        lastElevenLabsError = "";
-        const audioBlob = await res.blob();
-        return URL.createObjectURL(audioBlob);
-      } else {
-        try {
-          const errJson = await res.json();
-          lastElevenLabsError = errJson?.detail?.message || JSON.stringify(errJson?.detail || errJson);
-        } catch (parseErr) {
-          lastElevenLabsError = `HTTP ${res.status}`;
+        const data = await res.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const audioPart = parts.find((p) => p.inlineData?.data || p.inline_data?.data);
+        const inlineObj = audioPart?.inlineData || audioPart?.inline_data;
+        if (inlineObj?.data) {
+          const mime = (inlineObj.mimeType || inlineObj.mime_type || "").toLowerCase();
+          if (mime.includes("wav") || mime.includes("mp3") || mime.includes("ogg")) {
+            return `data:${mime};base64,${inlineObj.data}`;
+          }
+          const rateMatch = mime.match(/rate=(\d+)/);
+          const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
+          return pcmBase64ToWavUrl(inlineObj.data, sampleRate);
         }
       }
-    } catch (e) {
-      lastElevenLabsError = e.message;
-    }
+    } catch (e) {}
   }
   return null;
+}
+
+// Instant Unlimited Fallback (Device Neural TTS when offline/rate-limited)
+function speakWithDeviceFallback(text, onStart, onEnd) {
+  const cleanSpeechText = cleanTextForSpeech(text);
+  if (!cleanSpeechText || typeof window.speechSynthesis === "undefined") {
+    if (onEnd) onEnd();
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(cleanSpeechText);
+  if (/[\u0980-\u09FF]/.test(cleanSpeechText)) utter.lang = "bn-IN";
+  else if (/[\u0900-\u097F]/.test(cleanSpeechText)) utter.lang = "hi-IN";
+  else utter.lang = "en-IN";
+
+  const voices = window.speechSynthesis.getVoices();
+  const matchedVoice =
+    voices.find((v) => v.lang.toLowerCase() === utter.lang.toLowerCase()) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith(utter.lang.slice(0, 2).toLowerCase()));
+  if (matchedVoice) utter.voice = matchedVoice;
+
+  utter.rate = 1.0;
+  utter.pitch = 1.02;
+  utter.onstart = () => {
+    if (onStart) onStart();
+  };
+  utter.onend = () => {
+    if (onEnd) onEnd();
+  };
+  utter.onerror = () => {
+    if (onEnd) onEnd();
+  };
+  window.speechSynthesis.speak(utter);
 }
 
 async function toggleNeuralListen(text, btnEl) {
@@ -1245,20 +1309,25 @@ async function toggleNeuralListen(text, btnEl) {
   btnEl.classList.add("speaking-active");
   btnEl.querySelector("span").textContent = "Loading...";
 
-  const voiceId = activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
-  const mp3Url = await fetchElevenLabsAudioUrl(text, voiceId);
+  const voiceName = GEMINI_STUDIO_VOICES[studioVoiceIndex]?.id || "Aoede";
+  const wavUrl = await fetchGeminiAudioUrl(text, voiceName);
 
   if (activeAudioBtn !== btnEl) return;
 
-  if (mp3Url) {
+  if (wavUrl) {
     btnEl.querySelector("span").textContent = "Stop";
-    sharedAudioPlayer.src = mp3Url;
+    sharedAudioPlayer.src = wavUrl;
     sharedAudioPlayer.onended = () => stopCurrentSpeech();
     sharedAudioPlayer.onerror = () => stopCurrentSpeech();
     sharedAudioPlayer.play().catch(() => stopCurrentSpeech());
   } else {
-    stopCurrentSpeech();
-    showCustomToast(`Voice Error: ${lastElevenLabsError || "Check Settings -> Account."}`, "error");
+    speakWithDeviceFallback(
+      text,
+      () => {
+        if (activeAudioBtn === btnEl) btnEl.querySelector("span").textContent = "Stop";
+      },
+      () => stopCurrentSpeech()
+    );
   }
 }
 
@@ -1277,11 +1346,9 @@ function renderCustomVoiceListUI() {
   }
 
   listContainer.innerHTML = "";
-  activeVoicesList.forEach((voice, idx) => {
+  GEMINI_STUDIO_VOICES.forEach((voice, idx) => {
     const isSelected = idx === studioVoiceIndex;
     const isPlayingThis = activePreviewVoiceId === voice.id;
-    const vName = voice.name || voice.label.split(" ")[0];
-    const vTag = voice.tag || (voice.label.match(/\((.*?)\)/)?.[1] || "Eleven v3");
 
     const row = document.createElement("div");
     row.className = `flex items-center justify-between px-3.5 py-2.5 rounded-2xl border transition cursor-pointer ${
@@ -1299,8 +1366,8 @@ function renderCustomVoiceListUI() {
         ${isSelected ? `<i class="fa-solid fa-check text-[9px]"></i>` : ""}
       </span>
       <div class="truncate">
-        <span class="text-xs font-semibold">${escapeHtml(vName)}</span>
-        <span class="text-[10px] text-slate-400 ml-1.5">${escapeHtml(vTag)}</span>
+        <span class="text-xs font-semibold">${escapeHtml(voice.name)}</span>
+        <span class="text-[10px] text-slate-400 ml-1.5">${escapeHtml(voice.tag)}</span>
       </div>
     `;
 
@@ -1308,7 +1375,7 @@ function renderCustomVoiceListUI() {
       studioVoiceIndex = idx;
       localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
       const voiceLabelEl = document.getElementById("live-voice-label");
-      if (voiceLabelEl) voiceLabelEl.textContent = vName;
+      if (voiceLabelEl) voiceLabelEl.textContent = voice.name;
       renderCustomVoiceListUI();
     };
 
@@ -1319,7 +1386,7 @@ function renderCustomVoiceListUI() {
         ? "bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-400/30"
         : "bg-[#131a2c] hover:bg-emerald-500/25 text-emerald-400 border border-slate-700"
     }`;
-    playBtn.title = `Preview ${vName}`;
+    playBtn.title = `Preview ${voice.name}`;
     playBtn.innerHTML = isPlayingThis
       ? `<i class="fa-solid fa-stop text-xs"></i>`
       : `<i class="fa-solid fa-play text-xs ml-0.5"></i>`;
@@ -1337,18 +1404,18 @@ function renderCustomVoiceListUI() {
       activePreviewVoiceId = voice.id;
       playBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-xs"></i>`;
 
-      const sampleText = `Hello! I am ${vName}, your personal AI assistant. How can I help you today?`;
-      let mp3Url = voicePreviewCache[voice.id];
-      if (!mp3Url) {
-        mp3Url = await fetchElevenLabsAudioUrl(sampleText, voice.id);
-        if (mp3Url) voicePreviewCache[voice.id] = mp3Url;
+      const sampleText = `Hello! I am ${voice.name}, powered by Google Gemini. How can I help you today?`;
+      let wavUrl = voicePreviewCache[voice.id];
+      if (!wavUrl) {
+        wavUrl = await fetchGeminiAudioUrl(sampleText, voice.id);
+        if (wavUrl) voicePreviewCache[voice.id] = wavUrl;
       }
 
       if (activePreviewVoiceId !== voice.id) return;
 
-      if (mp3Url) {
+      if (wavUrl) {
         renderCustomVoiceListUI();
-        sharedAudioPlayer.src = mp3Url;
+        sharedAudioPlayer.src = wavUrl;
         sharedAudioPlayer.onended = () => {
           activePreviewVoiceId = null;
           renderCustomVoiceListUI();
@@ -1362,9 +1429,14 @@ function renderCustomVoiceListUI() {
           renderCustomVoiceListUI();
         });
       } else {
-        activePreviewVoiceId = null;
-        renderCustomVoiceListUI();
-        showCustomToast(`Preview Error: ${lastElevenLabsError || "Check ElevenLabs API key."}`, "error");
+        speakWithDeviceFallback(
+          sampleText,
+          () => renderCustomVoiceListUI(),
+          () => {
+            activePreviewVoiceId = null;
+            renderCustomVoiceListUI();
+          }
+        );
       }
     };
 
@@ -1698,7 +1770,7 @@ Custom Instructions: ${customSystemPrompt || "None."}`;
   setStreamingState(false);
 
   if (!succeeded && !finalReply) {
-    finalReply = `**Error:** ${lastApiError || "Unable to connect. Please check your API key in Settings."}`;
+    finalReply = `**Error:** ${lastApiError || "Unable to connect. Please check your Google Gemini API key in Settings."}`;
     textTarget.innerHTML = marked.parse(finalReply);
     if (liveVoiceCallback) liveVoiceCallback("Sorry, I could not connect right now. Please try again.");
   }
@@ -1738,7 +1810,7 @@ async function autoCaptureMemory(text) {
   }
 }
 
-// ==================== 9. GUARANTEED 4-ENGINE HD IMAGE STUDIO (NO REFUSED/JSON ERRORS) ====================
+// ==================== 9. GOOGLE GEMINI NATIVE IMAGE STUDIO + UNLIMITED BACKUP ====================
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1784,7 +1856,7 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
     </div>
     <div class="ai-bubble px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
       <i class="fa-solid fa-spinner fa-spin"></i>
-      <span>Generating HD artwork for "${escapeHtml(prompt)}"...</span>
+      <span>Generating Gemini HD artwork for "${escapeHtml(prompt)}"...</span>
     </div>
   `;
   box.appendChild(loadingRow);
@@ -1793,9 +1865,8 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
   let finalImageUrl = null;
   let lastImgError = "";
   const apiKey = getApiKey();
-  const [w, h] = ratio.split("x");
 
-  // Engine 1: Google AI Studio Native Image Generation (with explicit IMAGE modality)
+  // 1. Primary: Google Gemini Native Image Models
   if (apiKey) {
     const googleImageModels = [
       "gemini-2.5-flash-image",
@@ -1814,7 +1885,7 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
               "X-goog-api-key": apiKey
             },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: `Generate a high-quality, detailed image: ${prompt}` }] }],
+              contents: [{ parts: [{ text: `Generate a high-resolution, detailed image: ${prompt}` }] }],
               generationConfig: {
                 responseModalities: ["IMAGE", "TEXT"]
               }
@@ -1838,63 +1909,7 @@ async function triggerImageGeneration(prompt, ratio = "1024x1024") {
     }
   }
 
-  // Engine 2: DeepAI Text-to-Image API
-  const deepAiKey = getActiveDeepAiKey();
-  if (!finalImageUrl && deepAiKey) {
-    try {
-      const formData = new FormData();
-      formData.append("text", prompt);
-      formData.append("grid_size", "1");
-      formData.append("width", w || "768");
-      formData.append("height", h || "768");
-
-      const res = await fetch("https://api.deepai.org/api/text2img", {
-        method: "POST",
-        headers: { "api-key": deepAiKey },
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok && data.output_url) {
-        try {
-          const imgRes = await fetch(data.output_url);
-          const blob = await imgRes.blob();
-          if (blob.type.startsWith("image/") && blob.size > 5000) {
-            finalImageUrl = await blobToDataUrl(blob);
-          } else {
-            finalImageUrl = data.output_url;
-          }
-        } catch (e) {
-          finalImageUrl = data.output_url;
-        }
-      } else if (data.err || data.status) {
-        lastImgError = data.err || data.status;
-      }
-    } catch (e) {
-      lastImgError = e.message;
-    }
-  }
-
-  // Engine 3: Validated Pollinations Fetch (rejects HTTP 402 JSON & "Image refused" cards)
-  if (!finalImageUrl) {
-    try {
-      const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=768&nologo=true&seed=${Date.now()}`;
-      const res = await fetch(pollUrl);
-      const contentType = res.headers.get("content-type") || "";
-      if (res.ok && contentType.startsWith("image/")) {
-        const blob = await res.blob();
-        if (blob.size > 18000) {
-          finalImageUrl = await blobToDataUrl(blob);
-        }
-      } else {
-        try {
-          const errJson = await res.json();
-          lastImgError = errJson?.error?.message || lastImgError;
-        } catch (e) {}
-      }
-    } catch (e) {}
-  }
-
-  // Engine 4: AI Horde Free Unlimited Image Cluster (100% reliable fallback)
+  // 2. Unlimited Free Fallback (AI Horde — zero API key or IP rate-limit blocks)
   if (!finalImageUrl) {
     try {
       const submitRes = await fetch("https://stablehorde.net/api/v2/generate/async", {
@@ -1969,32 +1984,6 @@ function setupModalsAndSettings() {
   };
 
   renderCustomVoiceListUI();
-
-  const accountPanel = document.getElementById("spanel-account");
-  if (accountPanel && !document.getElementById("settings-el-key-input")) {
-    const elBox = document.createElement("div");
-    elBox.className = "pt-2 border-t border-slate-800/80";
-    elBox.innerHTML = `
-      <label class="block text-xs font-semibold text-purple-400 mb-1.5">ElevenLabs v3 Voice API Key (70+ Languages)</label>
-      <div class="flex gap-2">
-        <input type="password" id="settings-el-key-input" placeholder="sk_..." value="${escapeHtml(getActiveElevenLabsKey())}"
-          class="flex-1 px-3.5 py-2 rounded-2xl bg-[#080b14] border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500" />
-        <button type="button" id="save-el-key-btn" class="px-3.5 py-2 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition">Save</button>
-      </div>
-    `;
-    accountPanel.appendChild(elBox);
-
-    document.getElementById("save-el-key-btn").onclick = async () => {
-      const val = document.getElementById("settings-el-key-input").value.trim();
-      if (val) {
-        localStorage.setItem("mindora_el_key", val);
-        voicesSyncedFromApi = false;
-        Object.keys(voicePreviewCache).forEach((k) => delete voicePreviewCache[k]);
-        await syncElevenLabsVoices();
-        showCustomToast("ElevenLabs API Key saved!", "success");
-      }
-    };
-  }
 
   document.querySelectorAll(".settings-tab").forEach((tab) => {
     tab.onclick = () => {
@@ -2105,7 +2094,7 @@ function renderLanguageOptions() {
   });
 }
 
-// ==================== 11. GEMINI LIVE + ELEVENLABS V3 SYNCHRONIZED TEXT & VOICE ENGINE ====================
+// ==================== 11. GEMINI LIVE SYNCHRONIZED TEXT & VOICE ENGINE ====================
 function setupLiveVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
@@ -2134,10 +2123,10 @@ function setupLiveVoiceEngine() {
   let isMicStarting = false;
 
   const savedVoiceIdx = parseInt(localStorage.getItem("mindora_voice_idx") || "0", 10);
-  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % activeVoicesList.length;
+  studioVoiceIndex = isNaN(savedVoiceIdx) ? 0 : savedVoiceIdx % GEMINI_STUDIO_VOICES.length;
   const voiceLabelEl = document.getElementById("live-voice-label");
   if (voiceLabelEl) {
-    voiceLabelEl.textContent = activeVoicesList[studioVoiceIndex].name || activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+    voiceLabelEl.textContent = GEMINI_STUDIO_VOICES[studioVoiceIndex].name;
   }
 
   function detectLanguageFromText(text) {
@@ -2152,13 +2141,16 @@ function setupLiveVoiceEngine() {
       clearInterval(textSyncInterval);
       textSyncInterval = null;
     }
+    if (typeof window.speechSynthesis !== "undefined") {
+      window.speechSynthesis.cancel();
+    }
     sharedAudioPlayer.pause();
     sharedAudioPlayer.onplay = null;
     sharedAudioPlayer.onended = null;
     sharedAudioPlayer.onerror = null;
   }
 
-  function revealTextSyncedWithAudio(fullCleanText) {
+  function revealTextSyncedWithAudio(fullCleanText, useTimerFallback = false) {
     if (!statusText) return;
     if (textSyncInterval) {
       clearInterval(textSyncInterval);
@@ -2180,7 +2172,7 @@ function setupLiveVoiceEngine() {
         return;
       }
 
-      if (sharedAudioPlayer.duration && !isNaN(sharedAudioPlayer.duration) && sharedAudioPlayer.duration > 0) {
+      if (!useTimerFallback && sharedAudioPlayer.duration && !isNaN(sharedAudioPlayer.duration) && sharedAudioPlayer.duration > 0) {
         const progress = Math.min(1, (sharedAudioPlayer.currentTime + 0.15) / sharedAudioPlayer.duration);
         const targetWordCount = Math.max(1, Math.ceil(progress * words.length));
         statusText.textContent = words.slice(0, targetWordCount).join(" ");
@@ -2196,48 +2188,56 @@ function setupLiveVoiceEngine() {
           textSyncInterval = null;
         }
       }
-    }, 90);
+    }, 110);
   }
 
   async function playLiveOverlayPreview(voiceIdx) {
     unlockMobileAudio();
-    const voiceObj = activeVoicesList[voiceIdx] || activeVoicesList[0];
-    const voiceId = voiceObj.id;
-    const voiceName = voiceObj.name || voiceObj.label.split(" ")[0];
-    const sampleText = `Hello! I am ${voiceName}. Speak to me in English, Bengali, or Hindi!`;
+    const voiceObj = GEMINI_STUDIO_VOICES[voiceIdx] || GEMINI_STUDIO_VOICES[0];
+    const sampleText = `Hello! I am ${voiceObj.name}. Speak to me in English, Bengali, or Hindi!`;
 
     stopAllLiveAudio();
     try { if (recognition) recognition.abort(); } catch (e) {}
 
-    if (statusText) statusText.textContent = `Loading ${voiceName} preview...`;
+    if (statusText) statusText.textContent = `Loading ${voiceObj.name} preview...`;
 
-    let mp3Url = voicePreviewCache[voiceId];
-    if (!mp3Url) {
-      mp3Url = await fetchElevenLabsAudioUrl(sampleText, voiceId);
-      if (mp3Url) voicePreviewCache[voiceId] = mp3Url;
+    let wavUrl = voicePreviewCache[voiceObj.id];
+    if (!wavUrl) {
+      wavUrl = await fetchGeminiAudioUrl(sampleText, voiceObj.id);
+      if (wavUrl) voicePreviewCache[voiceObj.id] = wavUrl;
     }
 
-    if (mp3Url) {
+    const finishPreview = () => {
+      isAiSpeakingTurn = false;
+      if (statusText) statusText.textContent = sampleText;
+      if (isLiveActive && !isLiveMuted) {
+        setTimeout(() => {
+          if (statusText) statusText.textContent = "Listening... Go ahead.";
+          safeStartMic();
+        }, 450);
+      }
+    };
+
+    if (wavUrl) {
       isAiSpeakingTurn = true;
-      sharedAudioPlayer.src = mp3Url;
+      sharedAudioPlayer.src = wavUrl;
       sharedAudioPlayer.onplay = () => {
         setLiveTurnUI("speaking");
-        revealTextSyncedWithAudio(sampleText);
+        revealTextSyncedWithAudio(sampleText, false);
       };
-      sharedAudioPlayer.onended = () => {
-        isAiSpeakingTurn = false;
-        if (statusText) statusText.textContent = sampleText;
-        if (isLiveActive && !isLiveMuted) {
-          setTimeout(() => {
-            if (statusText) statusText.textContent = "Listening... Go ahead.";
-            safeStartMic();
-          }, 500);
-        }
-      };
-      sharedAudioPlayer.play().catch(() => { isAiSpeakingTurn = false; });
+      sharedAudioPlayer.onended = finishPreview;
+      sharedAudioPlayer.onerror = finishPreview;
+      sharedAudioPlayer.play().catch(finishPreview);
     } else {
-      if (statusText) statusText.textContent = `Voice error: ${lastElevenLabsError}`;
-      if (isLiveActive && !isLiveMuted) setTimeout(safeStartMic, 1200);
+      isAiSpeakingTurn = true;
+      speakWithDeviceFallback(
+        sampleText,
+        () => {
+          setLiveTurnUI("speaking");
+          revealTextSyncedWithAudio(sampleText, true);
+        },
+        finishPreview
+      );
     }
   }
 
@@ -2377,33 +2377,41 @@ function setupLiveVoiceEngine() {
     setLiveTurnUI("thinking");
     if (statusText) statusText.textContent = "Thinking...";
 
-    const voiceId = activeVoicesList[studioVoiceIndex]?.id || STUDIO_VOICES[0].id;
-    const mp3Url = await fetchElevenLabsAudioUrl(cleanDisplay, voiceId);
+    const voiceName = GEMINI_STUDIO_VOICES[studioVoiceIndex]?.id || "Aoede";
+    const wavUrl = await fetchGeminiAudioUrl(cleanDisplay, voiceName);
 
     if (!isLiveActive || !isLiveSpeakerOn || !isAiSpeakingTurn) {
       finishSpeakingTurn();
       return;
     }
 
-    if (mp3Url) {
-      sharedAudioPlayer.src = mp3Url;
+    if (wavUrl) {
+      sharedAudioPlayer.src = wavUrl;
       sharedAudioPlayer.onplay = () => {
         setLiveTurnUI("speaking");
-        revealTextSyncedWithAudio(cleanDisplay.slice(0, 260));
+        revealTextSyncedWithAudio(cleanDisplay.slice(0, 260), false);
       };
       sharedAudioPlayer.onended = finishSpeakingTurn;
       sharedAudioPlayer.onerror = finishSpeakingTurn;
       sharedAudioPlayer.play().catch(() => {
-        if (statusText) statusText.textContent = cleanDisplay.slice(0, 260);
-        finishSpeakingTurn();
+        speakWithDeviceFallback(
+          cleanDisplay,
+          () => {
+            setLiveTurnUI("speaking");
+            revealTextSyncedWithAudio(cleanDisplay.slice(0, 260), true);
+          },
+          finishSpeakingTurn
+        );
       });
     } else {
-      if (statusText) {
-        statusText.textContent = lastElevenLabsError
-          ? `Voice error: ${lastElevenLabsError}`
-          : cleanDisplay.slice(0, 260);
-      }
-      setTimeout(finishSpeakingTurn, 1200);
+      speakWithDeviceFallback(
+        cleanDisplay,
+        () => {
+          setLiveTurnUI("speaking");
+          revealTextSyncedWithAudio(cleanDisplay.slice(0, 260), true);
+        },
+        finishSpeakingTurn
+      );
     }
   }
 
@@ -2425,7 +2433,6 @@ function setupLiveVoiceEngine() {
   document.getElementById("live-talk-btn").onclick = () => {
     if (!recognition) return showCustomToast("Live Voice is not supported on this browser.", "error");
     unlockMobileAudio();
-    syncElevenLabsVoices();
     stopCurrentSpeech();
     stopAllLiveAudio();
     isLiveActive = true;
@@ -2468,9 +2475,9 @@ function setupLiveVoiceEngine() {
   };
 
   document.getElementById("live-voice-style-btn").onclick = () => {
-    studioVoiceIndex = (studioVoiceIndex + 1) % activeVoicesList.length;
+    studioVoiceIndex = (studioVoiceIndex + 1) % GEMINI_STUDIO_VOICES.length;
     localStorage.setItem("mindora_voice_idx", String(studioVoiceIndex));
-    const vName = activeVoicesList[studioVoiceIndex].name || activeVoicesList[studioVoiceIndex].label.split(" ")[0];
+    const vName = GEMINI_STUDIO_VOICES[studioVoiceIndex].name;
     if (voiceLabelEl) voiceLabelEl.textContent = vName;
     renderCustomVoiceListUI();
     playLiveOverlayPreview(studioVoiceIndex);
